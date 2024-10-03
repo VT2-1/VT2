@@ -1,0 +1,78 @@
+ДОКУМЕНТАЦИЯ ПО СОЗДАНИЮ ПЛАГИНОВ ДЛЯ VARTEXTER2
+
+Плагин должен иметь структуру
+
+PluginDir/
+    config.ini
+
+Параметры в формате:
+    обозначение в config.ini - пример названия - выполняемая функция
+
+[DEFAULT]
+
+    name - Plugin - Название плагина
+    varsion - 1.0 - Версия плагина
+    main - plugin.py  - Файл кода плагина
+    menu - Main.vt-menu - Файл меню
+    sc - Main.sc - Горячие клавиш
+
+Пример файла меню
+
+{
+    "menuBar": [
+        {
+            "id": "menu1",
+            "children": [
+                {
+                    "caption": "Open File",
+                    "shortcut": "ctrl+o",
+                    "command": {
+                        "command": "openFile"
+                    }
+                },
+                {
+                    "caption": "Action 2",
+                    "shortcut": "ctrl+s",
+                    "checkable": true
+                    "command": {
+                        "command": "saveFile",
+                        "args": ["arg1"],
+                        "kwargs": {"arg2": "val1"}
+                    }
+                }
+            ]
+        }
+    ],
+    "textContextMenu": [],
+    "tabBarContextMenu": [],
+    "viewContextMenu": []
+}
+
+! Элементы в меню можно добавлять из разных файлов. Для этого у двух меню должен быть один id
+
+Создание горячих клавиш
+
+[
+    { "keys": ["Сочетание клавиш"], "command": {"command": "command", "args": ["arg1"], "kwargs": {"arg2": "val1"}}, "text": "Отображаемый текст" },
+    { "keys": ["Сочетание клавиш", "Другое сочетание"], {"command": "command"}, "text": "Текст" }
+]
+
+Динамические элементы
+
+Оформление python файла
+Зарегистрировать как команду можно ЛЮБУЮ Python функцию из плагинов либо основного приложения
+
+Подключения VtAPI необходимо воспользоваться СТАТИЧЕСКОЙ функцией initAPI
+
+def initAPI(api):
+    global vtapi
+    vtapi = api
+
+Модули VtAPI и их функции:
+
+ - App - функции приложения и взаимодействие с Ui
+ - Tab - взаимодействие с вкладками
+ - Text - взаимодействие с текстовым редактором
+ - FSys - импорт стандартных модулей (os, sys, re, PyQt6)
+ - Commands - добавление и изменение команд
+ - SigSlots - сигналы и слоты приложения, команды реакции на сигналы
