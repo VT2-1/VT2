@@ -6,6 +6,7 @@ import msgpack
 from addit import *
 from api2 import PluginManager, VtAPI
 
+
 class Logger:
     def __init__(self, w):
         self._log = ""
@@ -22,6 +23,7 @@ class Logger:
             self.__window.console.textEdit.clear()
             self.__window.console.textEdit.append(value)
 
+
 class Ui_MainWindow(object):
     sys.path.insert(0, ".")
 
@@ -31,7 +33,7 @@ class Ui_MainWindow(object):
         self.appPath = os.path.dirname(argv[0])
 
         self.settings()
-        
+
         self.MainWindow.setObjectName("MainWindow")
         self.MainWindow.setWindowTitle(self.MainWindow.appName)
         self.MainWindow.resize(800, 600)
@@ -42,25 +44,25 @@ class Ui_MainWindow(object):
 
         self.centralwidget = QtWidgets.QWidget(parent=self.MainWindow)
         self.centralwidget.setObjectName("centralwidget")
-        
+
         self.horizontalLayout = QtWidgets.QHBoxLayout(self.centralwidget)
         self.horizontalLayout.setObjectName("horizontalLayout")
-        
+
         self.treeView = QtWidgets.QTreeView(parent=self.centralwidget)
         self.treeView.setMinimumWidth(150)
         self.treeView.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
         self.treeView.setMaximumWidth(300)
         self.treeView.setObjectName("treeWidget")
-        
+
         self.treeSplitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         self.horizontalLayout.addWidget(self.treeSplitter)
-        
+
         self.tabWidget = TabWidget(parent=self.centralwidget, MainWindow=self.MainWindow)
         self.treeSplitter.addWidget(self.treeView)
         self.treeSplitter.addWidget(self.tabWidget)
 
         self.MainWindow.setCentralWidget(self.centralwidget)
-        
+
         self.menubar = QtWidgets.QMenuBar(parent=self.MainWindow)
         self.menubar.setGeometry(QtCore.QRect(0, 0, 800, 21))
         self.menubar.setObjectName("menuBar")
@@ -75,12 +77,14 @@ class Ui_MainWindow(object):
         self.MainWindow.setStatusBar(self.statusbar)
 
         self.api = VtAPI(self.MainWindow)
+        self.logger.log += "VarTexter window loading..."
 
-        self.tabWidget.currentChanged.connect(self.api.SigSlots.tabChngd)
+        # self.tabWidget.currentChanged.connect(self.api.SigSlots.tabChngd)
 
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
 
-    def addTab(self, name: str = "", text: str = "", i: int = -1, file=None, canSave=True, canEdit=True, encoding="UTF-8"):
+    def addTab(self, name: str = "", text: str = "", i: int = -1, file=None, canSave=True, canEdit=True,
+               encoding="UTF-8"):
         self.tab = QtWidgets.QWidget()
         self.tab.file = file
         self.tab.canSave = canSave
@@ -88,20 +92,20 @@ class Ui_MainWindow(object):
         self.tabWidget.tabBar().setTabSaved(self.tab, True)
         self.tab.encoding = encoding
         self.tab.setObjectName("tab")
-        
+
         self.verticalLayout = QtWidgets.QVBoxLayout(self.tab)
         self.verticalLayout.setObjectName("verticalLayout")
-        
+
         self.frame = QtWidgets.QFrame(parent=self.tab)
         self.frame.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
         self.frame.setFrameShadow(QtWidgets.QFrame.Shadow.Raised)
         self.frame.setObjectName("tabFrame")
         self.verticalLayout.addWidget(self.frame)
-        
+
         self.tab.textEdit = TextEdit(self.MainWindow)
         self.tab.textEdit.setReadOnly(False)
-        
-        self.tab.textEdit.setText(text)
+
+        self.tab.textEdit.safeSetText(text)
         self.tab.textEdit.setObjectName("textEdit")
 
         self.verticalLayout.addLayout(self.tab.textEdit.layout)
@@ -110,8 +114,8 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), name or "Untitled")
         self.api.Tab.setTab(-1)
 
-        self.tab.textEdit.textChanged.connect(self.api.SigSlots.textChngd)
-        self.tab.textEdit.document().contentsChanged.connect(self.api.SigSlots.textChngd)
+        self.api.SigSlots.textChanged.connect(lambda: print("changed"))# self.api.SigSlots.textChanged.emit())
+        # self.tab.textEdit.document().contentsChanged.connect(self.api.SigSlots.textChngd)
 
         self.api.SigSlots.tabCreated.emit()
 
@@ -156,7 +160,8 @@ class Ui_MainWindow(object):
             if openFile:
                 openFile.get("command")([self.sc])
             else:
-                QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName+" - Warning", f"Open file function not found. You can find file at {self.sc}")
+                QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning",
+                                              f"Open file function not found. You can find file at {self.sc}")
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -168,7 +173,8 @@ class Ui_MainWindow(object):
         if openFile:
             openFile.get("command")(files)
         else:
-            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName+" - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.pluginsDir, 'Open&Save')}")
+            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning",
+                                          f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.pluginsDir, 'Open&Save')}")
 
     def windowInitialize(self):
         [os.makedirs(dir) for dir in [self.themesDir, self.pluginsDir, self.uiDir] if not os.path.isdir(dir)]
@@ -181,12 +187,16 @@ class Ui_MainWindow(object):
                     tabLog = msgpack.unpackb(packed_data, raw=False)
                     for tab in tabLog.get("tabs") or []:
                         tab = tabLog.get("tabs").get(tab)
-                        self.addTab(name=tab.get("name"), text=tab.get("text"), file=tab.get("file"), canSave=tab.get("canSave"))
-                        self.api.Text.rehighlite(self.api.Tab.currentTabIndex())
+                        self.addTab(name=tab.get("name"), text=tab.get("text"), file=tab.get("file"),
+                                    canSave=tab.get("canSave"))
+                        # self.api.Text.rehighlite(self.api.Tab.currentTabIndex())
+                        self.api.Text.initCursor(self.api.Tab.currentTabIndex())
                         self.api.Tab.setTabSaved(self.api.Tab.currentTabIndex(), tab.get("saved"))
-                        self.api.SigSlots.textChangeEvent(self.api.Tab.currentTabIndex())
-                        self.MainWindow.setWindowTitle(f"{self.MainWindow.tabWidget.tabText(self.api.Tab.currentTabIndex())} - VarTexter2")
-                        self.api.Text.setTextSelection(self.api.Tab.currentTabIndex(), tab.get("selection")[0], tab.get("selection")[1])
+                        # self.api.SigSlots.textChangeEvent(self.api.Tab.currentTabIndex())
+                        self.MainWindow.setWindowTitle(
+                            f"{self.MainWindow.tabWidget.tabText(self.api.Tab.currentTabIndex())} - VarTexter2")
+                        self.api.Text.setTextSelection(self.api.Tab.currentTabIndex(), tab.get("selection")[0],
+                                                       tab.get("selection")[1])
                     if tabLog.get("activeTab"):
                         self.tabWidget.setCurrentIndex(int(tabLog.get("activeTab")))
                     if tabLog.get("splitterState"): self.treeSplitter.restoreState(tabLog.get("splitterState"))
@@ -252,6 +262,7 @@ class Ui_MainWindow(object):
         tab = self.tabWidget.widget(i or self.api.Tab.currentTabIndex())
         tab.textEdit.paste()
 
+
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
@@ -265,7 +276,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.contextMenu = QtWidgets.QMenu(self)
         self.textContextMenu = QtWidgets.QMenu(self)
-        
+
         self.setupUi(self, self.argvParse())
 
         self.pl = PluginManager(self.pluginsDir, self)
@@ -276,33 +287,39 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.pl.registerCommand({"command": "closeTab"})
 
         if self.mb and os.path.isfile(self.mb):        self.pl.parseMenu(json.load(open(self.mb, "r+")), self.menuBar())
-        if self.cm and os.path.isfile(self.cm):        self.pl.parseMenu(json.load(open(self.cm, "r+")), self.contextMenu)
+        if self.cm and os.path.isfile(self.cm):        self.pl.parseMenu(json.load(open(self.cm, "r+")),
+                                                                         self.contextMenu)
 
         self.pl.load_plugins()
         self.api.loadThemes(self.menuBar())
         self.pl.registerCommands()
 
         if self.sc and os.path.isfile(self.sc):        self.pl.registerShortcuts(json.load(open(self.sc, "r+")))
-        
+
         self.pl.executeCommand({'command': 'setTheme', 'args': ['style.qss']})
 
         self.pl.clearCache()
         self.windowInitialize()
 
+        self.api.App.setTreeWidgetDir("/")
+
     def setTheme(self, theme):
         themePath = os.path.join(self.themesDir, theme)
+        print(os.getcwd(), themePath)
 
         if os.path.isfile(themePath):
             self.setStyleSheet(open(themePath, "r+").read())
-    
+
     def argvParse(self):
         return sys.argv
+
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
     w.show()
     sys.exit(app.exec())
+
 
 if __name__ == "__main__":
     main()

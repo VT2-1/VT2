@@ -261,6 +261,8 @@ class TextEdit(QtWidgets.QTextEdit):
     def __init__(self, mw):
         super().__init__()
 
+        self.change_event = False
+
         self.mw = mw
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.contextMenu)
@@ -288,6 +290,12 @@ class TextEdit(QtWidgets.QTextEdit):
         self.highLighter = StandartHighlighter(self.document())
         self.highLighter.setDocument(self.document())
 
+    def safeSetText(self, text):
+        self.change_event = True
+        self.setText(text)
+        self.mw.api.SigSlots.textChanged.emit()
+        self.change_event = False
+
     def contextMenu(self, pos):
         self.mw.contextMenu.exec(self.mapToGlobal(pos))
 
@@ -309,12 +317,12 @@ class TextEdit(QtWidgets.QTextEdit):
         tc = self.textCursor()
 
         if event.key() in {
-            Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down, 
+            Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
             Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt
         } or event.modifiers() in {Qt.KeyboardModifier.ControlModifier, Qt.KeyboardModifier.ShiftModifier}:
             QtWidgets.QTextEdit.keyPressEvent(self, event)
             return
-
+        self.mw.api.Tab.setTabSaved(self.mw.api.Tab.currentTabIndex(), False)
         if event.key() == Qt.Key.Key_Tab and self.completer.popup().isVisible():
             self.completer.insertText.emit(self.completer.getSelected())
             self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
@@ -332,7 +340,7 @@ class TextEdit(QtWidgets.QTextEdit):
             popup = self.completer.popup()
             popup.setCurrentIndex(self.completer.completionModel().index(0, 0))
 
-            cr.setWidth(self.completer.popup().sizeHintForColumn(0) 
+            cr.setWidth(self.completer.popup().sizeHintForColumn(0)
                         + self.completer.popup().verticalScrollBar().sizeHint().width())
             self.completer.complete(cr)
         else:
@@ -342,10 +350,10 @@ class TextEdit(QtWidgets.QTextEdit):
         cursor_position = self.line_edit.cursorPosition()
         line = self.line_edit.text().splitlines()[0]  # Берем первую строку
         column = cursor_position  # Используем текущую позицию курсора
-        
+
         # Получаем дополнения из Jedi
         completions = self.jedi_completer.get_completions(line, column)
-        
+
         # Обновляем completer
         self.completer.update_completions(completions)
 

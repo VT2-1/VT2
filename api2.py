@@ -3,12 +3,14 @@ import os, sys, configparser, json, importlib, re
 import importlib.util
 import PyQt6
 
+
 def importModule(path, n):
     spec = importlib.util.spec_from_file_location(n, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[n] = module
     spec.loader.exec_module(module)
     return module
+
 
 class PluginManager:
     def __init__(self, plugin_directory: str, w):
@@ -19,7 +21,7 @@ class PluginManager:
         self.shortcuts = []
         self.regCommands = {}
         self.dPath = None
-    
+
     def load_plugins(self):
         try:
             self.dPath = os.getcwd()
@@ -37,22 +39,27 @@ class PluginManager:
                             module = importModule(pyFile, self.name + "Plugin")
                             if hasattr(module, "initAPI"):
                                 module.initAPI(self.__window.api)
-                        except Exception as e: self.__window.api.App.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
-                        finally: sys.path.pop(0)
+                        except Exception as e:
+                            self.__window.api.App.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
+                        finally:
+                            sys.path.pop(0)
                     if self.menuFile:
                         try:
                             menuFile = json.load(open(self.menuFile, "r+"))
                             for menu in menuFile:
                                 self.parseMenu(menuFile.get(menu), self.__window.menuBar(), pl=module)
-                        except Exception as e: self.__window.api.App.setLogMsg(f"Failed load menu from '{self.menuFile}': {e}")
+                        except Exception as e:
+                            self.__window.api.App.setLogMsg(f"Failed load menu from '{self.menuFile}': {e}")
                     if self.scFile:
                         try:
                             self.registerShortcuts(json.load(open(self.scFile, "r+")))
-                        except Exception as e: self.__window.api.App.setLogMsg(f"Failed load shortcuts for '{self.name}' from '{info.get('sc')}': {e}")
+                        except Exception as e:
+                            self.__window.api.App.setLogMsg(
+                                f"Failed load shortcuts for '{self.name}' from '{self.scFile}': {e}")
 
         finally:
             os.chdir(self.dPath)
-                        
+
     def initPlugin(self, path):
         config = configparser.ConfigParser()
         config.read(path)
@@ -62,7 +69,7 @@ class PluginManager:
         self.mainFile = config.get('DEFAULT', 'main', fallback='')
         self.menuFile = config.get('DEFAULT', 'menu', fallback='')
         self.scFile = config.get('DEFAULT', 'sc', fallback='')
-    
+
     def parseMenu(self, data, parent, pl=None):
         if isinstance(data, dict):
             data = [data]
@@ -78,7 +85,8 @@ class PluginManager:
                     if 'children' in item:
                         self.parseMenu(item['children'], fmenu, pl)
                 else:
-                    menu = self.__menu_map.setdefault(menu_id, QtWidgets.QMenu(item.get('caption', 'Unnamed'), self.__window))
+                    menu = self.__menu_map.setdefault(menu_id,
+                                                      QtWidgets.QMenu(item.get('caption', 'Unnamed'), self.__window))
                     menu.setObjectName(item.get('id'))
                     parent.addMenu(menu)
                     if 'children' in item:
@@ -86,24 +94,26 @@ class PluginManager:
             else:
                 action = QtGui.QAction(item.get('caption', 'Unnamed'), self.__window)
                 if 'shortcut' in item:
-                    if not item['shortcut'] in self.shortcuts:                    
+                    if not item['shortcut'] in self.shortcuts:
                         action.setShortcut(QtGui.QKeySequence(item['shortcut']))
                         self.shortcuts.append(item['shortcut'])
                     else:
-                        self.__window.api.App.setLogMsg(f"Shortcut '{item['shortcut']}' for function '{item['command']}' is already used.")
+                        self.__window.api.App.setLogMsg(
+                            f"Shortcut '{item['shortcut']}' for function '{item['command']}' is already used.")
 
                 if 'command' in item:
                     args = item.get('command').get("args")
                     kwargs = item.get('command').get("kwargs")
-                    self.commands.append({"action": action, "command": item['command'], "plugin": pl, "args": args, "kwargs": kwargs})
+                    self.commands.append(
+                        {"action": action, "command": item['command'], "plugin": pl, "args": args, "kwargs": kwargs})
                     if 'checkable' in item:
                         action.setCheckable(item['checkable'])
-                    action.triggered.connect(lambda checked, cmd=item['command']: 
-                        self.executeCommand(
-                            cmd,
-                            checked=checked
-                        )
-                    )
+                    action.triggered.connect(lambda checked, cmd=item['command']:
+                                             self.executeCommand(
+                                                 cmd,
+                                                 checked=checked
+                                             )
+                                             )
                 parent.addAction(action)
 
     def executeCommand(self, c, *args, **kwargs):
@@ -118,20 +128,20 @@ class PluginManager:
                 action: QtGui.QAction = c.get("action")
                 if action and action.isCheckable():
                     checked_value = ckwargs.get("checked")
-                    
+
                     if checked_value is not None:
                         action.setChecked(checked_value)
                     else:
                         new_checked_state = not action.isChecked()
                         action.setChecked(new_checked_state)
                 out = c.get("command")(*args or [], **kwargs or {})
-                self.__window.api.App.setLogMsg(f"\nExecuted command '{command}' with args '{args}', kwargs '{kwargs}'")
+                self.__window.api.App.setLogMsg(f"Executed command '{command}' with args '{args}', kwargs '{kwargs}'")
                 if out:
-                    self.__window.api.App.setLogMsg(f"\nCommand '{command}' returned '{out}'")
+                    self.__window.api.App.setLogMsg(f"Command '{command}' returned '{out}'")
             except Exception as e:
-                self.__window.api.App.setLogMsg(f"\nFound error in '{command}' - '{e}'.\nInfo: {c}")
+                self.__window.api.App.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
         else:
-            self.__window.api.App.setLogMsg(f"\nCommand '{command}' not found")
+            self.__window.api.App.setLogMsg(f"Command '{command}' not found")
 
     def registerShortcuts(self, data):
         for sh in data:
@@ -145,9 +155,9 @@ class PluginManager:
                     action.setShortcut(QtGui.QKeySequence(key))
                     self.shortcuts.append(key)
 
-                action.triggered.connect(lambda checked, cmd=command: 
-                    self.executeCommand(cmd)
-                )
+                action.triggered.connect(lambda checked, cmd=command:
+                                         self.executeCommand(cmd)
+                                         )
                 self.__window.addAction(action)
                 self.__window.api.App.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' registered.")
             else:
@@ -161,7 +171,7 @@ class PluginManager:
             commandN = command.get("command")
         pl = commandInfo.get("plugin")
         action = commandInfo.get("action")
-        
+
         args = commandInfo.get("args", [])
         kwargs = commandInfo.get("kwargs", {})
 
@@ -176,7 +186,7 @@ class PluginManager:
                     "plugin": pl,
                 }
             except (ImportError, AttributeError, TypeError) as e:
-                self.__window.api.App.setLogMsg(f"\nError when registering '{commandN}' from '{pl}': {e}")
+                self.__window.api.App.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
         else:
             command_func = getattr(self.__window, commandN, None)
             if command_func:
@@ -188,7 +198,7 @@ class PluginManager:
                     "plugin": None,
                 }
             else:
-                self.__window.api.App.setLogMsg(f"\nCommand '{commandN}' not found")
+                self.__window.api.App.setLogMsg(f"Command '{commandN}' not found")
 
     def registerCommands(self):
         for commandInfo in self.commands:
@@ -199,7 +209,7 @@ class PluginManager:
                 commandN = command.get("command")
             pl = commandInfo.get("plugin")
             action = commandInfo.get("action")
-            
+
             args = commandInfo.get("args", [])
             kwargs = commandInfo.get("kwargs", {})
             checkable = commandInfo.get("checkable", False)
@@ -215,7 +225,7 @@ class PluginManager:
                         "plugin": pl,
                     }
                 except (ImportError, AttributeError, TypeError) as e:
-                    self.__window.api.App.setLogMsg(f"\nError when registering '{commandN}' from '{pl}': {e}")
+                    self.__window.api.App.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
             else:
                 command_func = getattr(self.__window, commandN, None)
                 if command_func:
@@ -227,8 +237,8 @@ class PluginManager:
                         "plugin": None,
                     }
                 else:
-                    self.__window.api.App.setLogMsg(f"\nCommand '{commandN}' not found")
-                    
+                    self.__window.api.App.setLogMsg(f"Command '{commandN}' not found")
+
     def findAction(self, parent_menu, caption=None, command=None):
         for action in parent_menu.actions():
             if caption and action.text() == caption:
@@ -274,12 +284,14 @@ class PluginManager:
     def clearCache(self):
         del self.dPath, self.commands, self.shortcuts
 
+
 class Tab:
     def __init__(self, w):
         self.__window = w
+
     def currentTabIndex(self):
         return self.__window.tabWidget.indexOf(self.__window.tabWidget.currentWidget())
-    
+
     def getTabTitle(self, i):
         return self.__window.tabWidget.tabText(i)
 
@@ -294,7 +306,7 @@ class Tab:
 
     def setTabText(self, i, text: str | None):
         tab = self.__window.tabWidget.widget(i)
-        tab.textEdit.setText(text)
+        tab.textEdit.safeSetText(text)
         return text
 
     def getTabFile(self, i):
@@ -305,7 +317,7 @@ class Tab:
         tab = self.__window.tabWidget.widget(i)
         tab.file = file
         return tab.file
-    
+
     def getTabCanSave(self, i):
         tab = self.__window.tabWidget.widget(i)
         return tab.canSave
@@ -337,9 +349,9 @@ class Tab:
 
     def setTab(self, i):
         if i <= -1:
-            self.__window.tabWidget.setCurrentIndex(self.__window.tabWidget.count()-1)
+            self.__window.tabWidget.setCurrentIndex(self.__window.tabWidget.count() - 1)
         else:
-            self.__window.tabWidget.setCurrentIndex(i-1)
+            self.__window.tabWidget.setCurrentIndex(i - 1)
         return i
 
     def getTabSaved(self, i):
@@ -351,9 +363,11 @@ class Tab:
         self.__window.tabWidget.tabBar().setTabSaved(tab or self.__window.tabWidget.currentWidget(), b)
         return b
 
+
 class Text:
     def __init__(self, w):
         self.__window = w
+
     def getTextSelection(self, i):
         tab = self.__window.tabWidget.widget(i)
         return tab.textEdit.textCursor().selectedText()
@@ -364,10 +378,12 @@ class Text:
 
     def setTextSelection(self, i, s, e):
         tab = self.__window.tabWidget.widget(i)
-        cursor = tab.textEdit.textCursor()
-        cursor.setPosition(s)
-        cursor.setPosition(e, QtGui.QTextCursor.MoveMode.KeepAnchor)
-        tab.textEdit.setTextCursor(cursor)
+        textLen = len(tab.textEdit.toPlainText())
+        if s <= textLen and e <= textLen:
+            cursor = tab.textEdit.textCursor()
+            cursor.setPosition(s)
+            cursor.setPosition(e, QtGui.QTextCursor.MoveMode.KeepAnchor)
+            tab.textEdit.setTextCursor(cursor)
 
     def getCompletePos(self, i):
         tab = self.__window.tabWidget.widget(i)
@@ -379,27 +395,39 @@ class Text:
         column = cursor_position - current_text.rfind('\n', 0, cursor_position) - 1
         return current_text, line_number, column
 
-    def setCompleteList(self, i, lst):
-        tab = self.__window.tabWidget.widget(i)
-        self.completer = tab.textEdit.completer.updateCompletions(lst)
-    
-    def setHighlighter(self, i, hl):
-        tab = self.__window.tabWidget.widget(i)
-        tab.textEdit.highLighter.highlightingRules = hl
+    # def setCompleteList(self, i, lst):
+    #     tab = self.__window.tabWidget.widget(i)
+    #     self.completer = tab.textEdit.completer.updateCompletions(lst)
 
-    def rehighlite(self, i):
+    # def setHighlighter(self, i, hl):
+    #     tab = self.__window.tabWidget.widget(i)
+    #     tab.textEdit.highLighter.highlightingRules = hl
+
+    # def rehighlite(self, i):
+    #     tab = self.__window.tabWidget.widget(i)
+    #     if tab:
+    #         tab.textEdit.highLighter.rehighlight()
+    def connectChangeEvent(self, i):
         tab = self.__window.tabWidget.widget(i)
         if tab:
-            tab.textEdit.highLighter.rehighlight()
+            tab.textEdit.document().contentsChanged.connect(self.__window.api.SigSlots.textChngd)
+
+    def initCursor(self, i):
+        tab = self.__window.tabWidget.widget(i)
+        cursor = tab.textEdit.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.WordLeft, QtGui.QTextCursor.MoveMode.KeepAnchor, 1)
+        tab.textEdit.setTextCursor(cursor)
+
 class Commands:
     def __init__(self, w):
         self.__window = w
-    
+
     def registerCommand(self, data):
         self.__window.pl.registerCommand(data)
 
     def loadShortcuts(self, data):
         self.__window.pl.registerShortcuts(data)
+
 
 class App:
     def __init__(self, w):
@@ -408,6 +436,7 @@ class App:
         self.pluginsDir = self.__window.pluginsDir
         self.themesDir = self.__window.themesDir
         self.uiDir = self.__window.uiDir
+
     def openFileDialog(e=None):
         dlg = QtWidgets.QFileDialog.getOpenFileNames(None, "Open File", "", "All Files (*);;Text Files (*.txt)")
         return dlg
@@ -437,7 +466,10 @@ class App:
     def getTreeModel(self):
         return self.model
 
-    def setTreeWidgetModel(self, dir):
+    def getModelElement(self, i):
+        return self.model.filePath(i)
+
+    def setTreeWidgetDir(self, dir):
         self.model = QtGui.QFileSystemModel()
         self.model.setRootPath(dir)
         self.__window.treeView.setModel(self.model)
@@ -455,25 +487,31 @@ class App:
             self.__window.pl.clearMenu(self.__window.menuBar(), menu)
             self.__window.pl.parseMenu(menu, data)
 
+
 class FSys:
     def __init__(self, w):
         self.__window = w
 
     def osModule(self):
         return os
+
     def sysModule(self):
         return sys
+
     def jsonModule(self):
         return json
+
     def importlibModule(self):
         return importlib
+
     def PyQt6Module(self):
         return PyQt6
+
     def reModule(self):
         return re
 
-class SigSlots(QtCore.QObject):
 
+class SigSlots(QtCore.QObject):
     commandsLoaded = QtCore.pyqtSignal()
     tabClosed = QtCore.pyqtSignal(int, str)
     tabCreated = QtCore.pyqtSignal()
@@ -482,21 +520,19 @@ class SigSlots(QtCore.QObject):
     windowClosed = QtCore.pyqtSignal()
 
     treeWidgetClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
-    treeWidgetDoubleClicked = QtCore.pyqtSignal(QtGui.QFileSystemModel, QtCore.QModelIndex)
+    treeWidgetDoubleClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
     treeWidgetActivated = QtCore.pyqtSignal()
 
     def __init__(self, w):
         super().__init__(w)
         self.__window = w
 
-    def textChngd(self):
-        tab = self.__window.tabWidget.currentWidget()
-        if tab:
-            self.__window.tabWidget.tabBar().setTabSaved(tab, False)
+        self.__window.treeView.doubleClicked.connect(self.onDoubleClicked)
 
     def tabChngd(self, index):
         if index > -1:
-            self.__window.setWindowTitle(f"{os.path.normpath(self.__window.api.Tab.getTabFile(index) or 'Untitled')} - {self.__window.appName}")
+            self.__window.setWindowTitle(
+                f"{os.path.normpath(self.__window.api.Tab.getTabFile(index) or 'Untitled')} - {self.__window.appName}")
             if index >= 0: self.__window.encodingLabel.setText(self.__window.tabWidget.widget(index).encoding)
             self.updateEncoding()
         else:
@@ -507,21 +543,14 @@ class SigSlots(QtCore.QObject):
         e = self.__window.api.Tab.getTabEncoding(self.__window.api.Tab.currentTabIndex())
         self.__window.encodingLabel.setText(e)
 
-    def onDoubleClicked(self, index):        self.treeWidgetDoubleClicked.emit(self.__window.treeView.model(), index)
+    def onDoubleClicked(self, index):
+        self.treeWidgetDoubleClicked.emit(index)
 
-    def onClicked(self, index):        self.treeWidgetClicked.emit(index)
+    def onClicked(self, index):
+        self.treeWidgetClicked.emit(index)
 
-    def onActivated(self):        self.treeWidgetActivated.emit()
-
-    def textChngd(self):
-        tab = self.__window.tabWidget.currentWidget()
-        if tab:
-            self.__window.tabWidget.tabBar().setTabSaved(tab, False)
-
-    def textChangeEvent(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        tab.textEdit.textChanged.connect(self.textChngd)
-        tab.textEdit.document().contentsChanged.connect(self.textChngd)
+    def onActivated(self):
+        self.treeWidgetActivated.emit()
 
 class VtAPI:
     def __init__(self, parent):
@@ -535,6 +564,7 @@ class VtAPI:
 
     def __str__(self):
         return f"""\n------------------------------VtAPI--version--{str(self.__version__)}------------------------------\nDocumentation:https://wtfidklol.com"""
+
     def loadThemes(self, menu):
         themeMenu = self.__window.pl.findMenu(menu, "themes")
         if themeMenu:
