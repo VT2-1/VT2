@@ -303,6 +303,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.api.App.setTreeWidgetDir("/")
 
+        openFileCommand = self.api.getCommand("openFile")
+        if openFileCommand:
+            openFileCommand.get("command")([sys.argv[1]] if len(sys.argv) > 1 else [], used=False)
+
     def setTheme(self, theme):
         themePath = os.path.join(self.themesDir, theme)
         print(os.getcwd(), themePath)
