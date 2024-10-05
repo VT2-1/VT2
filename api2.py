@@ -306,7 +306,7 @@ class Tab:
 
     def setTabText(self, i, text: str | None):
         tab = self.__window.tabWidget.widget(i)
-        tab.textEdit.safeSetText(text)
+        tab.textEdit.setText(text)
         return text
 
     def getTabFile(self, i):
@@ -378,12 +378,10 @@ class Text:
 
     def setTextSelection(self, i, s, e):
         tab = self.__window.tabWidget.widget(i)
-        textLen = len(tab.textEdit.toPlainText())
-        if s <= textLen and e <= textLen:
-            cursor = tab.textEdit.textCursor()
-            cursor.setPosition(s)
-            cursor.setPosition(e, QtGui.QTextCursor.MoveMode.KeepAnchor)
-            tab.textEdit.setTextCursor(cursor)
+        cursor = tab.textEdit.textCursor()
+        cursor.setPosition(s)
+        cursor.setPosition(e, QtGui.QTextCursor.MoveMode.KeepAnchor)
+        tab.textEdit.setTextCursor(cursor)
 
     def getCompletePos(self, i):
         tab = self.__window.tabWidget.widget(i)
@@ -391,32 +389,28 @@ class Text:
         cursor_position = tab.textEdit.textCursor().position()
 
         line_number = tab.textEdit.textCursor().blockNumber()
-        line = current_text.splitlines()[line_number]
-        column = cursor_position - current_text.rfind('\n', 0, cursor_position) - 1
-        return current_text, line_number, column
+        column = tab.textEdit.textCursor().columnNumber()
 
-    # def setCompleteList(self, i, lst):
-    #     tab = self.__window.tabWidget.widget(i)
-    #     self.completer = tab.textEdit.completer.updateCompletions(lst)
+        lines = current_text.splitlines()
+        if 0 <= line_number < len(lines):
+            line = lines[line_number]
+            return current_text, line_number + 1, column
+        else:
+            return current_text, 0, 0
 
-    # def setHighlighter(self, i, hl):
-    #     tab = self.__window.tabWidget.widget(i)
-    #     tab.textEdit.highLighter.highlightingRules = hl
+    def setCompleteList(self, i, lst):
+        tab = self.__window.tabWidget.widget(i)
+        self.completer = tab.textEdit.completer.updateCompletions(lst)
 
-    # def rehighlite(self, i):
-    #     tab = self.__window.tabWidget.widget(i)
-    #     if tab:
-    #         tab.textEdit.highLighter.rehighlight()
-    def connectChangeEvent(self, i):
+    def setHighlighter(self, i, hl):
+        tab = self.__window.tabWidget.widget(i)
+        tab.textEdit.highLighter.highlightingRules = hl
+
+    def rehighlite(self, i):
         tab = self.__window.tabWidget.widget(i)
         if tab:
-            tab.textEdit.document().contentsChanged.connect(self.__window.api.SigSlots.textChngd)
+            tab.textEdit.highLighter.rehighlight()
 
-    def initCursor(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        cursor = tab.textEdit.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.WordLeft, QtGui.QTextCursor.MoveMode.KeepAnchor, 1)
-        tab.textEdit.setTextCursor(cursor)
 
 class Commands:
     def __init__(self, w):
@@ -551,6 +545,7 @@ class SigSlots(QtCore.QObject):
 
     def onActivated(self):
         self.treeWidgetActivated.emit()
+
 
 class VtAPI:
     def __init__(self, parent):

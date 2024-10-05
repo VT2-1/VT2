@@ -114,9 +114,6 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), name or "Untitled")
         self.api.Tab.setTab(-1)
 
-        self.api.SigSlots.textChanged.connect(lambda: print("changed"))# self.api.SigSlots.textChanged.emit())
-        # self.tab.textEdit.document().contentsChanged.connect(self.api.SigSlots.textChngd)
-
         self.api.SigSlots.tabCreated.emit()
 
     def closeTab(self, i: int = None):
@@ -190,7 +187,6 @@ class Ui_MainWindow(object):
                         self.addTab(name=tab.get("name"), text=tab.get("text"), file=tab.get("file"),
                                     canSave=tab.get("canSave"))
                         # self.api.Text.rehighlite(self.api.Tab.currentTabIndex())
-                        self.api.Text.initCursor(self.api.Tab.currentTabIndex())
                         self.api.Tab.setTabSaved(self.api.Tab.currentTabIndex(), tab.get("saved"))
                         # self.api.SigSlots.textChangeEvent(self.api.Tab.currentTabIndex())
                         self.MainWindow.setWindowTitle(

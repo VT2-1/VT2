@@ -294,6 +294,7 @@ class TextEdit(QtWidgets.QTextEdit):
         self.change_event = True
         self.setText(text)
         self.mw.api.SigSlots.textChanged.emit()
+        self.highLighter.rehighlight()
         self.change_event = False
 
     def contextMenu(self, pos):
@@ -346,16 +347,16 @@ class TextEdit(QtWidgets.QTextEdit):
         else:
             self.completer.popup().hide()
 
-    def textEdited(self, text):
-        cursor_position = self.line_edit.cursorPosition()
-        line = self.line_edit.text().splitlines()[0]  # Берем первую строку
-        column = cursor_position  # Используем текущую позицию курсора
-
-        # Получаем дополнения из Jedi
-        completions = self.jedi_completer.get_completions(line, column)
-
-        # Обновляем completer
-        self.completer.update_completions(completions)
+    # def textEdited(self, text):
+    #     cursor_position = self.line_edit.cursorPosition()
+    #     line = self.line_edit.text().splitlines()[0]  # Берем первую строку
+    #     column = cursor_position  # Используем текущую позицию курсора
+    #
+    #     # Получаем дополнения из Jedi
+    #     completions = self.jedi_completer.get_completions(line, column)
+    #
+    #     # Обновляем completer
+    #     self.completer.update_completions(completions)
 
 class TabBar(QtWidgets.QTabBar):
     def __init__(self, tabwidget):

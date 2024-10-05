@@ -102,7 +102,6 @@ class AwesomeTextEdit(QPlainTextEdit):
                            Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt}:
             QPlainTextEdit.keyPressEvent(self, event)
             return
-        
 
         if event.key() == Qt.Key.Key_Tab and self.completer.popup().isVisible():
             self.completer.insertText.emit(self.completer.getSelected())
