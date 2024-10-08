@@ -70,13 +70,6 @@ class MiniMap(QtWidgets.QTextEdit):
         self.update_minimap()
         self.viewport().update()
 
-    def contextMenu(self):
-        menu = QtWidgets.QMenu()
-        a = QtGui.QAction("dwkde[wek]", self)
-        a.setCheckable(True)
-        menu.addAction(a)
-        menu.exec(QtGui.QCursor.pos())
-
     @pyqtSlot()
     def syncScroll(self):
         maxValue = self.textEdit.verticalScrollBar().maximum()
@@ -277,7 +270,7 @@ class TextEdit(QtWidgets.QTextEdit):
         self.minimapScrollArea.setWidget(self.minimap)
         self.minimapScrollArea.setFixedWidth(150)
         self.minimapScrollArea.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
-        self.minimapScrollArea.customContextMenuRequested.connect(self.minimap.contextMenu)
+        # self.minimapScrollArea.customContextMenuRequested.connect(self.minimap.contextMenu)
         self.minimapScrollArea.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.minimapScrollArea.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 

@@ -1,4 +1,5 @@
 import sys, json, os
+
 from PyQt6 import QtCore, QtWidgets
 from datetime import datetime
 import msgpack
@@ -160,6 +161,16 @@ class Ui_MainWindow(object):
                 QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning",
                                               f"Open file function not found. You can find file at {self.sc}")
 
+    def hideShowMinimap(self):
+        tab = self.tabWidget.currentWidget()
+        if tab:
+            minimap = tab.textEdit.minimapScrollArea
+            if minimap.isHidden():
+                minimap.show()
+            else:
+                minimap.hide()
+
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
@@ -278,13 +289,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.pl = PluginManager(self.pluginsDir, self)
 
         self.pl.registerCommand({"command": "setTheme"})
+        self.pl.registerCommand({"command": "hideShowMinimap"})
         self.pl.registerCommand({"command": "settingsHotKeys"})
         self.pl.registerCommand({"command": "argvParse"})
         self.pl.registerCommand({"command": "closeTab"})
 
         if self.mb and os.path.isfile(self.mb):        self.pl.parseMenu(json.load(open(self.mb, "r+")), self.menuBar())
-        if self.cm and os.path.isfile(self.cm):        self.pl.parseMenu(json.load(open(self.cm, "r+")),
-                                                                         self.contextMenu)
+        if self.cm and os.path.isfile(self.cm):        self.pl.parseMenu(json.load(open(self.cm, "r+")), self.contextMenu)
 
         self.pl.load_plugins()
         self.api.loadThemes(self.menuBar())
@@ -295,6 +306,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.pl.executeCommand({'command': 'setTheme', 'args': ['style.qss']})
 
         self.pl.clearCache()
+
         self.windowInitialize()
 
         self.api.App.setTreeWidgetDir("/")

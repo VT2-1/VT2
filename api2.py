@@ -1,5 +1,5 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-import os, sys, configparser, json, importlib, re
+import os, sys, configparser, json, importlib, re, subprocess, platform
 import importlib.util
 import PyQt6
 
@@ -108,6 +108,8 @@ class PluginManager:
                         {"action": action, "command": item['command'], "plugin": pl, "args": args, "kwargs": kwargs})
                     if 'checkable' in item:
                         action.setCheckable(item['checkable'])
+                        if 'checked' in item:
+                            action.setChecked(item['checked'])
                     action.triggered.connect(lambda checked, cmd=item['command']:
                                              self.executeCommand(
                                                  cmd,
@@ -140,6 +142,7 @@ class PluginManager:
                     self.__window.api.App.setLogMsg(f"Command '{command}' returned '{out}'")
             except Exception as e:
                 self.__window.api.App.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
+                print(e)
         else:
             self.__window.api.App.setLogMsg(f"Command '{command}' not found")
 
@@ -503,6 +506,12 @@ class FSys:
 
     def reModule(self):
         return re
+
+    def sprModule(self):
+        return subprocess
+
+    def platformModule(self):
+        return platform
 
 
 class SigSlots(QtCore.QObject):
