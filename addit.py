@@ -1,4 +1,4 @@
-import uuid, platform, os, re
+import platform, os, re
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import pyqtSlot
 
