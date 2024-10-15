@@ -67,7 +67,7 @@ class PackageManager:
             shutil.rmtree(os.path.join(self.packagesDir, name))
 
     def search(self, name):
-        return os.path.join(self.packagesDir, name) if os.path.isdir(os.path.join(self.packagesDir, name))
+        return os.path.join(self.packagesDir, name) if os.path.isdir(os.path.join(self.packagesDir, name)) else ""
 
 class PluginManager:
     def __init__(self, plugin_directory: str, w):
