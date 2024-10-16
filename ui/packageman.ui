@@ -14,7 +14,7 @@
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
+   <layout class="QVBoxLayout" name="mainLayout">
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="tabPosition">
@@ -26,11 +26,11 @@
       <property name="usesScrollButtons">
        <bool>false</bool>
       </property>
-      <widget class="QWidget" name="tab">
+      <widget class="QWidget" name="pluginTab">
        <attribute name="title">
         <string>Tab 1</string>
        </attribute>
-       <layout class="QVBoxLayout" name="verticalLayout_3">
+       <layout class="QVBoxLayout" name="pluginTabLayout">
         <item>
          <widget class="QWidget" name="widget" native="true">
           <property name="maximumSize">
@@ -39,28 +39,31 @@
             <height>100</height>
            </size>
           </property>
-          <layout class="QHBoxLayout" name="horizontalLayout">
+          <layout class="QHBoxLayout" name="cardLayout">
            <item>
             <widget class="QWidget" name="widget_3" native="true">
-             <layout class="QVBoxLayout" name="verticalLayout_2">
+             <layout class="QVBoxLayout" name="cardTextLayout">
               <item>
-               <widget class="QLabel" name="label">
+               <widget class="QLabel" name="nameLbl">
                 <property name="text">
-                 <string>TextLabel</string>
+                 <string>Plugin v.1.0</string>
                 </property>
                </widget>
               </item>
               <item>
-               <widget class="QLabel" name="label_3">
+               <widget class="QLabel" name="repoLbl">
                 <property name="text">
-                 <string>TextLabel</string>
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600; font-style:italic; color:#383838;&quot;&gt;https://github.com/cherry220-v/Plugin&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                </property>
+                <property name="textFormat">
+                 <enum>Qt::RichText</enum>
                 </property>
                </widget>
               </item>
               <item>
-               <widget class="QLabel" name="label_4">
+               <widget class="QLabel" name="descriptLbl">
                 <property name="text">
-                 <string>TextLabel</string>
+                 <string>This is description of Plugin</string>
                 </property>
                </widget>
               </item>
@@ -70,7 +73,7 @@
            <item>
             <widget class="QPushButton" name="pushButton">
              <property name="text">
-              <string>PushButton</string>
+              <string>Download</string>
              </property>
             </widget>
            </item>
@@ -79,7 +82,7 @@
         </item>
        </layout>
       </widget>
-      <widget class="QWidget" name="tab_2">
+      <widget class="QWidget" name="themeTab">
        <attribute name="title">
         <string>Tab 2</string>
        </attribute>

@@ -4,7 +4,32 @@ import importlib.util
 import PyQt6
 import urllib.request
 import uuid, os, shutil, json
-import zipfile
+import zipfile, builtins
+
+BLOCKED = [
+    "PyQt6"
+]
+
+class SafeImporter:
+    def __init__(self, disallowed_imports):
+        self.disallowed_imports = disallowed_imports
+
+    def __enter__(self):
+        self.original_import = builtins.__import__
+        builtins.__import__ = self.import_hook
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        builtins.__import__ = self.original_import
+
+    def import_hook(self, name, *args, **kwargs):
+        for disallowed in self.disallowed_imports:
+            if name.startswith(disallowed):
+                raise ImportError(f"Importing '{name}' is not allowed.")
+        return self.original_import(name, *args, **kwargs)
+
+class BlockedQApplication:
+    def __init__(self, *args, **kwargs):
+        raise ImportError("Access to QApplication is not allowed.")
 
 def importModule(path, n):
     spec = importlib.util.spec_from_file_location(n, path)
@@ -93,10 +118,12 @@ class PluginManager:
                     if self.mainFile:
                         pyFile = self.mainFile
                         try:
-                            sys.path.insert(0, fullPath)
-                            module = importModule(pyFile, self.name + "Plugin")
-                            if hasattr(module, "initAPI"):
-                                module.initAPI(self.__window.api)
+                            with SafeImporter(BLOCKED):
+                                sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
+                                sys.path.insert(0, fullPath)
+                                module = importModule(pyFile, self.name + "Plugin")
+                                if hasattr(module, "initAPI"):
+                                    module.initAPI(self.__window.api)
                         except Exception as e:
                             self.__window.api.App.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
                         finally:
@@ -570,7 +597,9 @@ class FSys:
 
     def platformModule(self):
         return platform
-
+    
+    def importModule(self, name):
+        return importlib.import_module(name)
 
 class SigSlots(QtCore.QObject):
     commandsLoaded = QtCore.pyqtSignal()

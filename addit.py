@@ -6,6 +6,17 @@ from PyQt6.QtWidgets import QTextEdit, QCompleter
 from PyQt6.QtCore import QStringListModel, Qt
 from PyQt6.QtGui import QTextCursor, QKeyEvent
 
+class VtSecureError(Exception):
+    print("VT2 security: not allowed")
+
+class SafeApplication(QtWidgets.QApplication):
+    def __init__(self, argv):
+        super().__init__(argv)
+    @staticmethod
+    def inistance(self, e):
+        e.ignore()
+        raise VtSecureError("")
+
 class ConsoleWidget(QtWidgets.QDockWidget):
     def __init__(self, window):
         super().__init__()
@@ -18,8 +29,8 @@ class ConsoleWidget(QtWidgets.QDockWidget):
         self.verticalLayout = QtWidgets.QVBoxLayout(self.consoleWidget)
         self.verticalLayout.setObjectName("verticalLayout")
         self.textEdit = QtWidgets.QTextEdit(parent=self.consoleWidget)
-        self.textEdit.setReadOnly(True)
-        self.textEdit.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
+        # self.textEdit.setReadOnly(True)
+        # self.textEdit.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
         self.textEdit.setObjectName("consoleOutput")
         self.verticalLayout.addWidget(self.textEdit)
         self.lineEdit = QtWidgets.QLineEdit(parent=self.consoleWidget)
@@ -431,6 +442,7 @@ class TabWidget (QtWidgets.QTabWidget):
             dlg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No | QtWidgets.QMessageBox.StandardButton.Cancel)
 
             yesButton = dlg.button(QtWidgets.QMessageBox.StandardButton.Yes)
+            yesButton.setObjectName()
             noButton = dlg.button(QtWidgets.QMessageBox.StandardButton.No)
             cancelButton = dlg.button(QtWidgets.QMessageBox.StandardButton.Cancel)
 
