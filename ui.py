@@ -2,16 +2,19 @@ import sys, json, os
 
 from PyQt6 import QtCore, QtWidgets
 from datetime import datetime
-import msgpack
+import msgpack, io
 
 from addit import *
 from api2 import PluginManager, VtAPI
 
-
 class Logger:
-    def __init__(self, w):
+    def __init__(self, window):
         self._log = ""
-        self.__window = w
+        self.__window = window
+        
+        self._stdout_backup = sys.stdout
+        self._log_stream = io.StringIO()
+        sys.stdout = self
 
     @property
     def log(self):
@@ -24,6 +27,17 @@ class Logger:
             self.__window.console.textEdit.clear()
             self.__window.console.textEdit.append(value)
 
+    def write(self, message):
+        if message:
+            self.__window.api.App.setLogMsg(f"stdout: {message}")
+            self._stdout_backup.write(message)
+
+    def flush(self):
+        pass
+
+    def close(self):
+        sys.stdout = self._stdout_backup
+        self._log_stream.close()
 
 class Ui_MainWindow(object):
     sys.path.insert(0, ".")
@@ -78,9 +92,7 @@ class Ui_MainWindow(object):
         self.MainWindow.setStatusBar(self.statusbar)
 
         self.api = VtAPI(self.MainWindow)
-        self.logger.log += "VarTexter window loading..."
-
-        # self.tabWidget.currentChanged.connect(self.api.SigSlots.tabChngd)
+        self.logger.log = "VarTexter window loading..."
 
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
 
@@ -144,6 +156,8 @@ class Ui_MainWindow(object):
             if not os.path.isdir(self.pluginsDir): os.makedirs(self.pluginsDir)
             self.uiDir = StaticInfo.replacePaths(os.path.join(self.packageDirs, "Ui"))
             if not os.path.isdir(self.uiDir): os.makedirs(self.uiDir)
+            self.cacheDir = StaticInfo.replacePaths(os.path.join(self.packageDirs, "cache"))
+            if not os.path.isdir(self.cacheDir): os.makedirs(self.cacheDir)
         self.MainWindow.appName = self.settData.get("appName")
         self.MainWindow.__version__ = self.settData.get("apiVersion")
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
@@ -158,8 +172,7 @@ class Ui_MainWindow(object):
             if openFile:
                 openFile.get("command")([self.sc])
             else:
-                QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning",
-                                              f"Open file function not found. You can find file at {self.sc}")
+                QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. You can find file at {self.sc}")
 
     def hideShowMinimap(self):
         tab = self.tabWidget.currentWidget()
@@ -181,8 +194,7 @@ class Ui_MainWindow(object):
         if openFile:
             openFile.get("command")(files)
         else:
-            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning",
-                                          f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.pluginsDir, 'Open&Save')}")
+            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.pluginsDir, 'Open&Save')}")
 
     def windowInitialize(self):
         [os.makedirs(dir) for dir in [self.themesDir, self.pluginsDir, self.uiDir] if not os.path.isdir(dir)]
@@ -195,15 +207,10 @@ class Ui_MainWindow(object):
                     tabLog = msgpack.unpackb(packed_data, raw=False)
                     for tab in tabLog.get("tabs") or []:
                         tab = tabLog.get("tabs").get(tab)
-                        self.addTab(name=tab.get("name"), text=tab.get("text"), file=tab.get("file"),
-                                    canSave=tab.get("canSave"))
-                        # self.api.Text.rehighlite(self.api.Tab.currentTabIndex())
+                        self.addTab(name=tab.get("name"), text=tab.get("text"), file=tab.get("file"), canSave=tab.get("canSave"))
                         self.api.Tab.setTabSaved(self.api.Tab.currentTabIndex(), tab.get("saved"))
-                        # self.api.SigSlots.textChangeEvent(self.api.Tab.currentTabIndex())
-                        self.MainWindow.setWindowTitle(
-                            f"{self.MainWindow.tabWidget.tabText(self.api.Tab.currentTabIndex())} - VarTexter2")
-                        self.api.Text.setTextSelection(self.api.Tab.currentTabIndex(), tab.get("selection")[0],
-                                                       tab.get("selection")[1])
+                        self.MainWindow.setWindowTitle(f"{self.MainWindow.tabWidget.tabText(self.api.Tab.currentTabIndex())} - VarTexter2")
+                        self.api.Text.setTextSelection(self.api.Tab.currentTabIndex(), tab.get("selection")[0], tab.get("selection")[1])
                     if tabLog.get("activeTab"):
                         self.tabWidget.setCurrentIndex(int(tabLog.get("activeTab")))
                     if tabLog.get("splitterState"): self.treeSplitter.restoreState(tabLog.get("splitterState"))
@@ -328,9 +335,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def argvParse(self):
         return sys.argv
 
-
 def main():
-    app = SafeApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
     w.show()
     sys.exit(app.exec())

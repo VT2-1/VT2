@@ -1,21 +1,10 @@
-import platform, os, re
+import platform, os, re, shutil, urllib.request, uuid, json, zipfile
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import pyqtSlot
 
-from PyQt6.QtWidgets import QTextEdit, QCompleter
+from PyQt6.QtWidgets import QCompleter
 from PyQt6.QtCore import QStringListModel, Qt
-from PyQt6.QtGui import QTextCursor, QKeyEvent
-
-class VtSecureError(Exception):
-    print("VT2 security: not allowed")
-
-class SafeApplication(QtWidgets.QApplication):
-    def __init__(self, argv):
-        super().__init__(argv)
-    @staticmethod
-    def inistance(self, e):
-        e.ignore()
-        raise VtSecureError("")
+from PyQt6.QtGui import QTextCursor
 
 class ConsoleWidget(QtWidgets.QDockWidget):
     def __init__(self, window):
@@ -29,8 +18,8 @@ class ConsoleWidget(QtWidgets.QDockWidget):
         self.verticalLayout = QtWidgets.QVBoxLayout(self.consoleWidget)
         self.verticalLayout.setObjectName("verticalLayout")
         self.textEdit = QtWidgets.QTextEdit(parent=self.consoleWidget)
-        # self.textEdit.setReadOnly(True)
-        # self.textEdit.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
+        self.textEdit.setReadOnly(True)
+        self.textEdit.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
         self.textEdit.setObjectName("consoleOutput")
         self.verticalLayout.addWidget(self.textEdit)
         self.lineEdit = QtWidgets.QLineEdit(parent=self.consoleWidget)
@@ -470,6 +459,157 @@ class TabWidget (QtWidgets.QTabWidget):
             tab.deleteLater()
             self.removeTab(currentIndex)
             self.MainWindow.api.SigSlots.tabClosed.emit(currentIndex, tab.file)
+
+class PackageManager(QtWidgets.QDialog):
+    def __init__(self, window, packagesDir):
+        self.window = window
+        self.packagesDir = packagesDir
+        self.tempDir = os.getenv("TEMP")
+
+        super().__init__()
+        self.setObjectName("MainWindow")
+        self.resize(800, 600)
+        self.mainLayout = QtWidgets.QVBoxLayout(self)
+        self.mainLayout.setObjectName("mainLayout")
+
+        self.scrollArea = QtWidgets.QScrollArea(self)
+        self.scrollArea.setWidgetResizable(True)
+        self.scrollArea.setObjectName("scrollArea")
+
+        self.scrollAreaWidgetContents = QtWidgets.QWidget()
+        self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
+        self.scrollAreaLayout = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents)
+        self.scrollAreaLayout.setObjectName("scrollAreaLayout")
+
+        self.tabWidget = QtWidgets.QTabWidget(parent=self)
+        self.tabWidget.setTabPosition(QtWidgets.QTabWidget.TabPosition.West)
+        self.tabWidget.setElideMode(QtCore.Qt.TextElideMode.ElideNone)
+        self.tabWidget.setUsesScrollButtons(False)
+        self.tabWidget.setObjectName("tabWidget")
+        
+        self.pluginTab = QtWidgets.QWidget()
+        self.pluginTab.setObjectName("pluginTab")
+
+        self.pluginTabLayout = QtWidgets.QVBoxLayout(self.pluginTab)
+        self.pluginTabLayout.setObjectName("pluginTabLayout")
+
+        self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+        self.pluginTabLayout.addWidget(self.scrollArea)
+
+        self.tabWidget.addTab(self.pluginTab, "")
+        self.themeTab = QtWidgets.QWidget()
+        self.themeTab.setObjectName("themeTab")
+        self.tabWidget.addTab(self.themeTab, "")
+        self.mainLayout.addWidget(self.tabWidget)
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.pluginTab), "Plugins")
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.themeTab), "Themes")
+        self.setLayout(self.mainLayout)
+
+    def addCard(self, idx):
+        self.widget = QtWidgets.QWidget(parent=self.scrollAreaWidgetContents)
+        self.widget.setMaximumSize(QtCore.QSize(16777215, 100))
+        self.widget.setObjectName("widget")
+        self.cardLayout = QtWidgets.QHBoxLayout(self.widget)
+        self.cardLayout.setObjectName("cardLayout")
+        self.widget_3 = QtWidgets.QWidget(parent=self.widget)
+        self.widget_3.setObjectName("widget_3")
+        self.cardTextLayout = QtWidgets.QVBoxLayout(self.widget_3)
+        self.cardTextLayout.setObjectName("cardTextLayout")
+        self.nameLbl = QtWidgets.QLabel(parent=self.widget_3)
+        self.nameLbl.setObjectName("nameLbl")
+        self.cardTextLayout.addWidget(self.nameLbl)
+        self.repoLbl = QtWidgets.QLabel(parent=self.widget_3)
+        self.repoLbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
+        self.repoLbl.setObjectName("repoLbl")
+        self.cardTextLayout.addWidget(self.repoLbl)
+        self.descriptLbl = QtWidgets.QLabel(parent=self.widget_3)
+        self.descriptLbl.setObjectName("descriptLbl")
+        self.cardTextLayout.addWidget(self.descriptLbl)
+        self.cardLayout.addWidget(self.widget_3)
+        self.pushButton = QtWidgets.QPushButton(parent=self.widget)
+        self.pushButton.setObjectName("pushButton")
+        self.cardLayout.addWidget(self.pushButton)
+        self.scrollAreaLayout.addWidget(self.widget)
+
+        self.nameLbl.setText("Plugin v.1.0")
+        self.repoLbl.setText("<html><head/><body><p><span style=\" font-weight:600; font-style:italic; color:#383838;\">https://github.com/cherry220-v/Plugin</span></p></body></html>")
+        self.descriptLbl.setText("This is description of Plugin")
+        self.pushButton.setText("Download")
+
+    def addCardsSequentially(self):
+        for i in range(1000):
+            self.addCard(i)
+
+    def tempname(self, n):
+        return "vt-" + str(uuid.uuid4())[:n + 1] + "-install"
+
+    def install(self, url, site="github"):
+        tempDirName = self.tempname(8)
+        path = os.path.join(self.tempDir or os.path.dirname(__file__), tempDirName)
+        os.makedirs(path)
+
+        filePath = os.path.join(path, "package.zip")
+        if site == "github":
+            urllib.request.urlretrieve(url + "/zipball/master", filePath)
+        else:
+            urllib.request.urlretrieve(url, filePath)
+
+        with zipfile.ZipFile(filePath, 'r') as f:
+            f.extractall(path)
+        os.remove(filePath)
+
+        extracted_dir = next(
+            os.path.join(path, d) for d in os.listdir(path)
+            if os.path.isdir(os.path.join(path, d))
+        )
+
+        finalPackageDir = os.path.join(self.packagesDir, url.split("/")[-1])
+        if not os.path.exists(self.packagesDir):
+            os.makedirs(self.packagesDir)
+
+        shutil.move(extracted_dir, finalPackageDir)
+        shutil.rmtree(path)
+
+        self.checkReqs(finalPackageDir)
+
+    def checkReqs(self, d):
+        req_file = os.path.join(d, "requirement.vt-plugins")
+        print(req_file)
+        if os.path.isfile(req_file):
+            with open(req_file, "r+") as f:
+                data = json.load(f)
+                for url in data:
+                    print(url)
+                    if not os.path.isdir(os.path.join(self.packagesDir, url.split("/")[-1])):
+                        self.install(url)
+
+    def uninstall(self, name):
+        if os.path.isdir(os.path.join(self.packagesDir, name)):
+            shutil.rmtree(os.path.join(self.packagesDir, name))
+
+    def search(self, name):
+        return os.path.join(self.packagesDir, name) if os.path.isdir(os.path.join(self.packagesDir, name)) else ""
+
+    def updateRepos(self):
+        pdir = os.path.join(self.window.cacheDir, "plugins")
+        tdir = os.path.join(self.window.cacheDir, "themes")
+        os.makedirs(self.window.cacheDir)
+        if not os.path.isdir(pdir): shutil.rmtree(pdir)
+        if not os.path.isdir(pdir): shutil.rmtree(tdir)
+        os.makedirs(pdir)
+        os.makedirs(tdir)
+
+        urllib.request.urlretrieve("url", os.path.join(pdir, "plugins.zip"))
+
+        with zipfile.ZipFile(os.path.join(pdir, "plugins.zip"), 'r') as f:
+            f.extractall(pdir)
+        os.remove(os.path.join(pdir, "plugins.zip"))
+
+        for pl in os.walk(pdir):
+            self.addCard("")
+        for th in os.walk(tdir):
+            self.addCard("")
+        
 
 class StaticInfo:
     @staticmethod
