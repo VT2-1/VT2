@@ -1,4 +1,4 @@
-import platform, os, re, shutil, urllib.request, uuid, json, zipfile
+import platform, os, re, shutil, urllib.request, uuid, json, zipfile, pip
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import pyqtSlot
 
@@ -481,6 +481,15 @@ class PackageManager(QtWidgets.QDialog):
         self.scrollAreaLayout = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents)
         self.scrollAreaLayout.setObjectName("scrollAreaLayout")
 
+        self.scrollArea_2 = QtWidgets.QScrollArea(self)
+        self.scrollArea_2.setWidgetResizable(True)
+        self.scrollArea_2.setObjectName("scrollArea_2")
+
+        self.scrollAreaWidgetContents_2 = QtWidgets.QWidget()
+        self.scrollAreaWidgetContents_2.setObjectName("scrollAreaWidgetContents_2")
+        self.scrollAreaLayout_2 = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents_2)
+        self.scrollAreaLayout_2.setObjectName("scrollAreaLayout_2")
+
         self.tabWidget = QtWidgets.QTabWidget(parent=self)
         self.tabWidget.setTabPosition(QtWidgets.QTabWidget.TabPosition.West)
         self.tabWidget.setElideMode(QtCore.Qt.TextElideMode.ElideNone)
@@ -494,19 +503,27 @@ class PackageManager(QtWidgets.QDialog):
         self.pluginTabLayout.setObjectName("pluginTabLayout")
 
         self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+        self.scrollArea_2.setWidget(self.scrollAreaWidgetContents_2)
         self.pluginTabLayout.addWidget(self.scrollArea)
 
         self.tabWidget.addTab(self.pluginTab, "")
         self.themeTab = QtWidgets.QWidget()
         self.themeTab.setObjectName("themeTab")
+
+        self.themeTabLayout = QtWidgets.QVBoxLayout(self.pluginTab)
+        self.themeTabLayout.setObjectName("themeTabLayout")
+
+        self.themeTabLayout.addWidget(self.scrollArea_2)
+
         self.tabWidget.addTab(self.themeTab, "")
         self.mainLayout.addWidget(self.tabWidget)
+    
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.pluginTab), "Plugins")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.themeTab), "Themes")
         self.setLayout(self.mainLayout)
 
-    def addCard(self, idx):
-        self.widget = QtWidgets.QWidget(parent=self.scrollAreaWidgetContents)
+    def addCard(self, l, url, name="Unknown"):
+        self.widget = QtWidgets.QWidget(parent=l)
         self.widget.setMaximumSize(QtCore.QSize(16777215, 100))
         self.widget.setObjectName("widget")
         self.cardLayout = QtWidgets.QHBoxLayout(self.widget)
@@ -528,12 +545,13 @@ class PackageManager(QtWidgets.QDialog):
         self.cardLayout.addWidget(self.widget_3)
         self.pushButton = QtWidgets.QPushButton(parent=self.widget)
         self.pushButton.setObjectName("pushButton")
+        self.pushButton.clicked.connect(lambda: self.install(url))
         self.cardLayout.addWidget(self.pushButton)
         self.scrollAreaLayout.addWidget(self.widget)
 
-        self.nameLbl.setText("Plugin v.1.0")
-        self.repoLbl.setText("<html><head/><body><p><span style=\" font-weight:600; font-style:italic; color:#383838;\">https://github.com/cherry220-v/Plugin</span></p></body></html>")
-        self.descriptLbl.setText("This is description of Plugin")
+        self.nameLbl.setText(name)
+        self.repoLbl.setText(f"<html><head/><body><p><span style=\" font-weight:600; font-style:italic; color:#383838;\">{url}</span></p></body></html>")
+        # self.descriptLbl.setText("This is description of Plugin")
         self.pushButton.setText("Download")
 
     def addCardsSequentially(self):
@@ -544,8 +562,8 @@ class PackageManager(QtWidgets.QDialog):
         return "vt-" + str(uuid.uuid4())[:n + 1] + "-install"
 
     def install(self, url, site="github"):
-        tempDirName = self.tempname(8)
-        path = os.path.join(self.tempDir or os.path.dirname(__file__), tempDirName)
+        tempdirName = self.tempname(8)
+        path = os.path.join(self.tempDir or os.path.dirname(__file__), tempdirName)
         os.makedirs(path)
 
         filePath = os.path.join(path, "package.zip")
@@ -559,7 +577,7 @@ class PackageManager(QtWidgets.QDialog):
         os.remove(filePath)
 
         extracted_dir = next(
-            os.path.join(path, d) for d in os.listdir(path)
+            os.path.join(path, d) for d in os.lisself.tdir(path)
             if os.path.isdir(os.path.join(path, d))
         )
 
@@ -572,16 +590,13 @@ class PackageManager(QtWidgets.QDialog):
 
         self.checkReqs(finalPackageDir)
 
-    def checkReqs(self, d):
-        req_file = os.path.join(d, "requirement.vt-plugins")
-        print(req_file)
-        if os.path.isfile(req_file):
-            with open(req_file, "r+") as f:
-                data = json.load(f)
-                for url in data:
-                    print(url)
-                    if not os.path.isdir(os.path.join(self.packagesDir, url.split("/")[-1])):
-                        self.install(url)
+    def installModule(sellf, packages: str):
+        pip.main(["install", packages])
+
+    def checkReqs(self, data):
+        for url in data:
+            if not os.path.isdir(os.path.join(self.packagesDir, url.split("/")[-1])):
+                self.install(url)
 
     def uninstall(self, name):
         if os.path.isdir(os.path.join(self.packagesDir, name)):
@@ -591,24 +606,36 @@ class PackageManager(QtWidgets.QDialog):
         return os.path.join(self.packagesDir, name) if os.path.isdir(os.path.join(self.packagesDir, name)) else ""
 
     def updateRepos(self):
-        pdir = os.path.join(self.window.cacheDir, "plugins")
-        tdir = os.path.join(self.window.cacheDir, "themes")
-        os.makedirs(self.window.cacheDir)
-        if not os.path.isdir(pdir): shutil.rmtree(pdir)
-        if not os.path.isdir(pdir): shutil.rmtree(tdir)
-        os.makedirs(pdir)
-        os.makedirs(tdir)
+        urllib.request.urlretrieve("http://127.0.0.1:8000/update", os.path.join(self.window.cacheDir, "plugins.zip"))
 
-        urllib.request.urlretrieve("url", os.path.join(pdir, "plugins.zip"))
+        with zipfile.ZipFile(os.path.join(self.window.cacheDir, "plugins.zip"), 'r') as f:
+            f.extractall(self.window.cacheDir)
+        os.remove(os.path.join(self.window.cacheDir, "plugins.zip"))
 
-        with zipfile.ZipFile(os.path.join(pdir, "plugins.zip"), 'r') as f:
-            f.extractall(pdir)
-        os.remove(os.path.join(pdir, "plugins.zip"))
-
-        for pl in os.walk(pdir):
-            self.addCard("")
-        for th in os.walk(tdir):
-            self.addCard("")
+        for pl in os.listdir(os.path.join(self.window.cacheDir, "plugins")):
+            with open(os.path.join(self.window.cacheDir, "plugins", pl), "r+") as f:
+                try:
+                    data = json.load(f)
+                    if "apiVersion" in data and "repo" in data:
+                        if "platform" in data:
+                            if StaticInfo.get_platform() not in data["platform"]:
+                                continue
+                        if "requirements" in data:
+                            self.checkReqs(data["requirements"])
+                        if "modules" in data:
+                            self.installModule(" ".join(data["modules"]))
+                        self.addCard(self.scrollAreaWidgetContents, data["repo"], name=data.get("name"))            
+                except:
+                    pass
+        for th in os.listdir(os.path.join(self.window.cacheDir, "themes")):
+            with open(os.path.join(self.window.cacheDir, "themes", th), "r+") as f:
+                print(f.name)
+                try:
+                    data = json.load(f)
+                    if "repo" in data:
+                        self.addCard(self.scrollAreaWidgetContents_2, data["repo"])            
+                except:
+                    pass
         
 
 class StaticInfo:
