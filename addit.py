@@ -427,45 +427,46 @@ class TabWidget (QtWidgets.QTabWidget):
         self.moveRange = pos.x() - tabRect.left(), tabRect.right() - pos.x()
 
     def closeTab(self, currentIndex):
-        self.setCurrentIndex(currentIndex)
-        tab = self.currentWidget()
-        if not self.isSaved(tab):
-            dlg = QtWidgets.QMessageBox(self)
-            dlg.setWindowTitle("VarTexter2 - Exiting")
-            dlg.setText("File is unsaved. Do you want to save it?")
-            dlg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No | QtWidgets.QMessageBox.StandardButton.Cancel)
+        if currentIndex >= 0:
+            self.setCurrentIndex(currentIndex)
+            tab = self.currentWidget()
+            if not self.isSaved(tab):
+                dlg = QtWidgets.QMessageBox(self)
+                dlg.setWindowTitle("VarTexter2 - Exiting")
+                dlg.setText("File is unsaved. Do you want to save it?")
+                dlg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No | QtWidgets.QMessageBox.StandardButton.Cancel)
 
-            yesButton = dlg.button(QtWidgets.QMessageBox.StandardButton.Yes)
-            yesButton.setObjectName("tabSaveYes")
-            noButton = dlg.button(QtWidgets.QMessageBox.StandardButton.No)
-            noButton.setObjectName("tabSaveNo")
-            cancelButton = dlg.button(QtWidgets.QMessageBox.StandardButton.Cancel)
-            cancelButton.setObjectName("tabSaveCancel")
+                yesButton = dlg.button(QtWidgets.QMessageBox.StandardButton.Yes)
+                yesButton.setObjectName("tabSaveYes")
+                noButton = dlg.button(QtWidgets.QMessageBox.StandardButton.No)
+                noButton.setObjectName("tabSaveNo")
+                cancelButton = dlg.button(QtWidgets.QMessageBox.StandardButton.Cancel)
+                cancelButton.setObjectName("tabSaveCancel")
 
-            # yesButton.setStyleSheet("QPushButton { color: white;}")
-            # noButton.setStyleSheet("QPushButton { color: white;}")
-            # cancelButton.setStyleSheet("QPushButton { color: white;}")
-            dlg.setDefaultButton(cancelButton)
-            
-            dlg.setStyleSheet("QtWidgets.QMessageBox { background-color: black; } QLabel { color: white; }")
-            
-            result = dlg.exec()
+                # yesButton.setStyleSheet("QPushButton { color: white;}")
+                # noButton.setStyleSheet("QPushButton { color: white;}")
+                # cancelButton.setStyleSheet("QPushButton { color: white;}")
+                dlg.setDefaultButton(cancelButton)
+                
+                dlg.setStyleSheet("QtWidgets.QMessageBox { background-color: black; } QLabel { color: white; }")
+                
+                result = dlg.exec()
 
-            if result == QtWidgets.QMessageBox.StandardButton.Yes:
-                self.MainWindow.api.execute_command(f"saveFile {tab.file}")
+                if result == QtWidgets.QMessageBox.StandardButton.Yes:
+                    self.MainWindow.api.execute_command(f"saveFile {tab.file}")
+                    tab.deleteLater()
+                    self.removeTab(currentIndex)
+                    self.MainWindow.api.SigSlots.tabClosed.emit(currentIndex, tab.file)
+                elif result == QtWidgets.QMessageBox.StandardButton.No:
+                    tab.deleteLater()
+                    self.removeTab(currentIndex)
+                    self.MainWindow.api.SigSlots.tabClosed.emit(currentIndex, tab.file)
+                elif result == QtWidgets.QMessageBox.StandardButton.Cancel:
+                    pass
+            else:
                 tab.deleteLater()
                 self.removeTab(currentIndex)
                 self.MainWindow.api.SigSlots.tabClosed.emit(currentIndex, tab.file)
-            elif result == QtWidgets.QMessageBox.StandardButton.No:
-                tab.deleteLater()
-                self.removeTab(currentIndex)
-                self.MainWindow.api.SigSlots.tabClosed.emit(currentIndex, tab.file)
-            elif result == QtWidgets.QMessageBox.StandardButton.Cancel:
-                pass
-        else:
-            tab.deleteLater()
-            self.removeTab(currentIndex)
-            self.MainWindow.api.SigSlots.tabClosed.emit(currentIndex, tab.file)
 
 class PackageManager(QtWidgets.QDialog):
     def __init__(self, window, packagesDir):

@@ -88,9 +88,7 @@ class PluginManager:
     def loadMenu(self, f, module=None):
         try:
             menuFile = json.load(open(f, "r+"))
-            print(list(menuFile.keys()))
-            for menu in list(menuFile.keys()):
-                print(menu)
+            for menu in menuFile:
                 if menu == "menuBar" or menu == "mainMenu":
                     self.parseMenu(menuFile.get(menu), self.__window.menuBar(), pl=module)
                 elif menu == "textContextMenu":
@@ -135,6 +133,7 @@ class PluginManager:
                 if 'shortcut' in item:
                     if not item['shortcut'] in self.shortcuts:
                         action.setShortcut(QtGui.QKeySequence(item['shortcut']))
+                        action.setStatusTip(item['shortcut'])
                         self.shortcuts.append(item['shortcut'])
                     else:
                         self.__window.api.App.setLogMsg(
@@ -195,6 +194,7 @@ class PluginManager:
                 action = QtGui.QAction(self.__window)
                 for key in keys:
                     action.setShortcut(QtGui.QKeySequence(key))
+                    action.setStatusTip(key)
                     self.shortcuts.append(key)
 
                 action.triggered.connect(lambda checked, cmd=command:
