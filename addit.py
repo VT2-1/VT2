@@ -359,7 +359,12 @@ class TabBar(QtWidgets.QTabBar):
         self.setObjectName("tabBar")
         self.setMovable(True)
         self.setTabsClosable(True)
-    
+        self.contextMenu = QtWidgets.QMenu(self)
+        self.customContextMenuRequested.connect(self.cmRequest)
+
+    def cmRequest(self, pos):
+        self.contextMenu.exec(self.mapToGlobal(pos))
+
     def setTabSaved(self, tab, saved):
         if not tab in [i.get("tab") for i in self.savedStates]:
             self.savedStates.append({"tab": tab, "saved": saved})

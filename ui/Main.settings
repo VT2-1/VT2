@@ -6,8 +6,7 @@
         "Linux": "%HOME%/.local/share/VarTexter2",
         "OSX": "%HOME%/Library/Application Support/VarTexter2"
     },
-    "mb": "Ui/Main.mb",
-    "cm": "Ui/Main.cm",
-    "sc": "Ui/Main.sc",
+    "menu": "Ui/Main.vt-menu",
+    "hotkeys": "Ui/Main.vt-keys",
     "logStdout": true
 }

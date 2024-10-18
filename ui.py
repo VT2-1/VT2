@@ -46,6 +46,7 @@ class Ui_MainWindow(object):
         self.MainWindow = MainWindow
         self.appPath = os.path.basename(__file__)
         self.appPath = os.path.dirname(argv[0])
+        self.themeFile = None
 
         self.settings()
 
@@ -165,9 +166,8 @@ class Ui_MainWindow(object):
         self.MainWindow.appName = self.settData.get("appName")
         self.MainWindow.__version__ = self.settData.get("apiVersion")
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
-        self.mb = StaticInfo.replacePaths(os.path.join(self.packageDirs, self.settData.get("mb")))
-        self.cm = StaticInfo.replacePaths(os.path.join(self.packageDirs, self.settData.get("cm")))
-        self.sc = StaticInfo.replacePaths(os.path.join(self.packageDirs, self.settData.get("sc")))
+        self.menuFile = StaticInfo.replacePaths(os.path.join(self.packageDirs, self.settData.get("menu")))
+        self.hotKeysFile = StaticInfo.replacePaths(os.path.join(self.packageDirs, self.settData.get("hotkeys")))
         os.chdir(self.packageDirs)
 
     def settingsHotKeys(self):
@@ -218,6 +218,7 @@ class Ui_MainWindow(object):
                     if tabLog.get("activeTab"):
                         self.tabWidget.setCurrentIndex(int(tabLog.get("activeTab")))
                     if tabLog.get("splitterState"): self.treeSplitter.restoreState(tabLog.get("splitterState"))
+                    if tabLog.get("themeFile") and os.path.isfile(tabLog.get("themeFile")): self.api.App.setTheme(tabLog.get("themeFile"))
         except ValueError:
             self.logger.log += f"\nFailed to restore window state. No file found at {stateFile}"
             open(stateFile)
@@ -232,6 +233,7 @@ class Ui_MainWindow(object):
         tabsInfo = {}
         tabs = tabsInfo["tabs"] = {}
         i = self.api.Tab.currentTabIndex()
+        tabsInfo["themeFile"] = self.themeFile
         tabsInfo["activeTab"] = str(i)
         tabsInfo["splitterState"] = self.treeSplitter.saveState().data()
         stateFile = os.path.join(self.packageDirs, 'data.msgpack')
@@ -292,6 +294,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             "username": os.getlogin(),
         }
 
+        self.menus = {
+            "menuBar": self.menuBar(),
+            "textContextMenu": [],
+            "tabBarContextMenu": [],
+            "viewContextMenu": []
+        }
+
         self.contextMenu = QtWidgets.QMenu(self)
         self.textContextMenu = QtWidgets.QMenu(self)
 
@@ -307,16 +316,13 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.pl.registerCommand({"command": "addTab"})
         self.pl.registerCommand({"command": "showPackages"})
 
-        if self.mb and os.path.isfile(self.mb):        self.pl.parseMenu(json.load(open(self.mb, "r+")), self.menuBar())
-        if self.cm and os.path.isfile(self.cm):        self.pl.parseMenu(json.load(open(self.cm, "r+")), self.contextMenu)
+        if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
 
         self.pl.load_plugins()
         self.api.loadThemes(self.menuBar())
         self.pl.registerCommands()
 
-        if self.sc and os.path.isfile(self.sc):        self.pl.registerShortcuts(json.load(open(self.sc, "r+")))
-
-        self.pl.executeCommand({'command': 'setTheme', 'args': ['style.qss']})
+        if self.hotKeysFile and os.path.isfile(self.hotKeysFile): self.pl.registerShortcuts(json.load(open(self.hotKeysFile, "r+")))
 
         self.pl.clearCache()
 
@@ -333,6 +339,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         if os.path.isfile(themePath):
             self.setStyleSheet(open(themePath, "r+").read())
+            self.themeFile = themePath
 
     def argvParse(self):
         return sys.argv

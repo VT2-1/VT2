@@ -74,12 +74,7 @@ class PluginManager:
                         finally:
                             sys.path.pop(0)
                     if self.menuFile:
-                        try:
-                            menuFile = json.load(open(self.menuFile, "r+"))
-                            for menu in menuFile:
-                                self.parseMenu(menuFile.get(menu), self.__window.menuBar(), pl=module)
-                        except Exception as e:
-                            self.__window.api.App.setLogMsg(f"Failed load menu from '{self.menuFile}': {e}")
+                        self.loadMenu(self.menuFile)
                     if self.scFile:
                         try:
                             self.registerShortcuts(json.load(open(self.scFile, "r+")))
@@ -89,6 +84,19 @@ class PluginManager:
 
         finally:
             os.chdir(self.dPath)
+
+    def loadMenu(self, f, module=None):
+        try:
+            menuFile = json.load(open(f, "r+"))
+            for menu in menuFile:
+                if menu == "menuBar" or menu == "mainMenu":
+                    self.parseMenu(menuFile.get(menu), self.__window.menuBar(), pl=module)
+                elif menu == "textContextMenu":
+                    self.parseMenu(menuFile.get(menu), self.__window.contentMenu, pl=module)
+                elif menu == "tabBarContextMenu":
+                    self.parseMenu(menuFile.get(menu), self.__window.tabWidget.tabBar().contextMenu, pl=module)
+        except Exception as e:
+            self.__window.api.App.setLogMsg(f"Failed load menu from '{f}': {e}")
 
     def initPlugin(self, path):
         config = configparser.ConfigParser()
@@ -317,7 +325,6 @@ class PluginManager:
     def clearCache(self):
         del self.dPath, self.commands, self.shortcuts
 
-
 class Tab:
     def __init__(self, w):
         self.__window = w
@@ -396,7 +403,6 @@ class Tab:
         self.__window.tabWidget.tabBar().setTabSaved(tab or self.__window.tabWidget.currentWidget(), b)
         return b
 
-
 class Text:
     def __init__(self, w):
         self.__window = w
@@ -444,7 +450,6 @@ class Text:
         if tab:
             tab.textEdit.highLighter.rehighlight()
 
-
 class Commands:
     def __init__(self, w):
         self.__window = w
@@ -454,7 +459,6 @@ class Commands:
 
     def loadShortcuts(self, data):
         self.__window.pl.registerShortcuts(data)
-
 
 class App:
     def __init__(self, w):
@@ -478,6 +482,9 @@ class App:
             caption="VarTexter - Get directory",
         )
         return str(dlg)
+
+    def getTheme(self):
+        return self.__window.themeFile
 
     def setTheme(self, theme):
         themePath = os.path.join(self.__window.themesDir, theme)
@@ -509,11 +516,10 @@ class App:
             self.__window.setStyleSheet(open(themePath, "r+").read())
 
     def updateMenu(self, menu, data):
-        menu = self.__window.pl.findMenu(self.__window.menuBar(), menu)
+        menuClass = self.__window.pl.findMenu(self.__window.menuBar(), menu)
         if menu:
             self.__window.pl.clearMenu(self.__window.menuBar(), menu)
-            self.__window.pl.parseMenu(menu, data)
-
+            self.__window.pl.parseMenu(data, menuClass)
 
 class FSys:
     def __init__(self, w):
@@ -587,7 +593,6 @@ class SigSlots(QtCore.QObject):
     def onActivated(self):
         self.treeWidgetActivated.emit()
 
-
 class VtAPI:
     def __init__(self, parent):
         self.__window = parent
@@ -606,9 +611,10 @@ class VtAPI:
         if themeMenu:
             themes = []
             for theme in os.listdir(self.__window.themesDir):
-                if os.path.isfile(os.path.join(self.__window.themesDir, theme)) and theme[-1:-3] == "qss":
-                    themes.append({"caption": theme, "command": f"setTheme {theme}"})
-            self.App.updateMenu(themeMenu, themes)
+                if os.path.isfile(os.path.join(self.__window.themesDir, theme)):
+                    print(theme)
+                    themes.append({"caption": theme, "command": {"command": f"setTheme", "kwargs": {"theme": theme}}})
+            self.App.updateMenu("themes", themes)
 
     def getCommand(self, name):
         return self.__window.pl.regCommands.get(name)
