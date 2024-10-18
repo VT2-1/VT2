@@ -20,6 +20,9 @@
       <property name="tabPosition">
        <enum>QTabWidget::West</enum>
       </property>
+      <property name="currentIndex">
+       <number>1</number>
+      </property>
       <property name="elideMode">
        <enum>Qt::ElideNone</enum>
       </property>
@@ -86,6 +89,57 @@
        <attribute name="title">
         <string>Tab 2</string>
        </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <widget class="QWidget" name="widget_2" native="true">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>100</height>
+           </size>
+          </property>
+          <layout class="QHBoxLayout" name="themeTabLayout">
+           <item>
+            <widget class="QWidget" name="widget_4" native="true">
+             <layout class="QVBoxLayout" name="cardTextLayout_2">
+              <item>
+               <widget class="QLabel" name="nameLbl_2">
+                <property name="text">
+                 <string>Plugin v.1.0</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="repoLbl_2">
+                <property name="text">
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-weight:600; font-style:italic; color:#383838;&quot;&gt;https://github.com/cherry220-v/Plugin&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                </property>
+                <property name="textFormat">
+                 <enum>Qt::RichText</enum>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="descriptLbl_2">
+                <property name="text">
+                 <string>This is description of Plugin</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="pushButton_2">
+             <property name="text">
+              <string>Download</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
       </widget>
      </widget>
     </item>

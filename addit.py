@@ -431,13 +431,15 @@ class TabWidget (QtWidgets.QTabWidget):
             dlg.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No | QtWidgets.QMessageBox.StandardButton.Cancel)
 
             yesButton = dlg.button(QtWidgets.QMessageBox.StandardButton.Yes)
-            yesButton.setObjectName()
+            yesButton.setObjectName("tabSaveYes")
             noButton = dlg.button(QtWidgets.QMessageBox.StandardButton.No)
+            noButton.setObjectName("tabSaveNo")
             cancelButton = dlg.button(QtWidgets.QMessageBox.StandardButton.Cancel)
+            cancelButton.setObjectName("tabSaveCancel")
 
-            yesButton.setStyleSheet("QPushButton { color: white;}")
-            noButton.setStyleSheet("QPushButton { color: white;}")
-            cancelButton.setStyleSheet("QPushButton { color: white;}")
+            # yesButton.setStyleSheet("QPushButton { color: white;}")
+            # noButton.setStyleSheet("QPushButton { color: white;}")
+            # cancelButton.setStyleSheet("QPushButton { color: white;}")
             dlg.setDefaultButton(cancelButton)
             
             dlg.setStyleSheet("QtWidgets.QMessageBox { background-color: black; } QLabel { color: white; }")
@@ -462,135 +464,107 @@ class TabWidget (QtWidgets.QTabWidget):
 
 class PackageManager(QtWidgets.QDialog):
     def __init__(self, window, packagesDir):
+        super().__init__(window)
         self.window = window
         self.packagesDir = packagesDir
         self.tempDir = os.getenv("TEMP")
 
-        super().__init__()
-        self.setObjectName("MainWindow")
+        self.setObjectName("PackageManager")
         self.resize(800, 600)
         self.mainLayout = QtWidgets.QVBoxLayout(self)
-        self.mainLayout.setObjectName("mainLayout")
-
-        self.scrollArea = QtWidgets.QScrollArea(self)
-        self.scrollArea.setWidgetResizable(True)
-        self.scrollArea.setObjectName("scrollArea")
-
-        self.scrollAreaWidgetContents = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents.setObjectName("scrollAreaWidgetContents")
-        self.scrollAreaLayout = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents)
-        self.scrollAreaLayout.setObjectName("scrollAreaLayout")
-
-        self.scrollArea_2 = QtWidgets.QScrollArea(self)
-        self.scrollArea_2.setWidgetResizable(True)
-        self.scrollArea_2.setObjectName("scrollArea_2")
-
-        self.scrollAreaWidgetContents_2 = QtWidgets.QWidget()
-        self.scrollAreaWidgetContents_2.setObjectName("scrollAreaWidgetContents_2")
-        self.scrollAreaLayout_2 = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents_2)
-        self.scrollAreaLayout_2.setObjectName("scrollAreaLayout_2")
 
         self.tabWidget = QtWidgets.QTabWidget(parent=self)
         self.tabWidget.setTabPosition(QtWidgets.QTabWidget.TabPosition.West)
-        self.tabWidget.setElideMode(QtCore.Qt.TextElideMode.ElideNone)
-        self.tabWidget.setUsesScrollButtons(False)
         self.tabWidget.setObjectName("tabWidget")
-        
-        self.pluginTab = QtWidgets.QWidget()
-        self.pluginTab.setObjectName("pluginTab")
 
-        self.pluginTabLayout = QtWidgets.QVBoxLayout(self.pluginTab)
-        self.pluginTabLayout.setObjectName("pluginTabLayout")
+        self.createPluginTab()
+        self.createThemeTab()
 
-        self.scrollArea.setWidget(self.scrollAreaWidgetContents)
-        self.scrollArea_2.setWidget(self.scrollAreaWidgetContents_2)
-        self.pluginTabLayout.addWidget(self.scrollArea)
-
-        self.tabWidget.addTab(self.pluginTab, "")
-        self.themeTab = QtWidgets.QWidget()
-        self.themeTab.setObjectName("themeTab")
-
-        self.themeTabLayout = QtWidgets.QVBoxLayout(self.pluginTab)
-        self.themeTabLayout.setObjectName("themeTabLayout")
-
-        self.themeTabLayout.addWidget(self.scrollArea_2)
-
-        self.tabWidget.addTab(self.themeTab, "")
+        self.tabWidget.addTab(self.pluginTab, "Plugins")
+        self.tabWidget.addTab(self.themeTab, "Themes")
         self.mainLayout.addWidget(self.tabWidget)
-    
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.pluginTab), "Plugins")
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.themeTab), "Themes")
         self.setLayout(self.mainLayout)
 
-    def addCard(self, l, url, name="Unknown"):
-        self.widget = QtWidgets.QWidget(parent=l)
-        self.widget.setMaximumSize(QtCore.QSize(16777215, 100))
-        self.widget.setObjectName("widget")
-        self.cardLayout = QtWidgets.QHBoxLayout(self.widget)
-        self.cardLayout.setObjectName("cardLayout")
-        self.widget_3 = QtWidgets.QWidget(parent=self.widget)
-        self.widget_3.setObjectName("widget_3")
-        self.cardTextLayout = QtWidgets.QVBoxLayout(self.widget_3)
-        self.cardTextLayout.setObjectName("cardTextLayout")
-        self.nameLbl = QtWidgets.QLabel(parent=self.widget_3)
-        self.nameLbl.setObjectName("nameLbl")
-        self.cardTextLayout.addWidget(self.nameLbl)
-        self.repoLbl = QtWidgets.QLabel(parent=self.widget_3)
-        self.repoLbl.setTextFormat(QtCore.Qt.TextFormat.RichText)
-        self.repoLbl.setObjectName("repoLbl")
-        self.cardTextLayout.addWidget(self.repoLbl)
-        self.descriptLbl = QtWidgets.QLabel(parent=self.widget_3)
-        self.descriptLbl.setObjectName("descriptLbl")
-        self.cardTextLayout.addWidget(self.descriptLbl)
-        self.cardLayout.addWidget(self.widget_3)
-        self.pushButton = QtWidgets.QPushButton(parent=self.widget)
-        self.pushButton.setObjectName("pushButton")
-        self.pushButton.clicked.connect(lambda: self.install(url))
-        self.cardLayout.addWidget(self.pushButton)
-        self.scrollAreaLayout.addWidget(self.widget)
+    def createPluginTab(self):
+        self.pluginTab = QtWidgets.QWidget()
+        self.l = QtWidgets.QVBoxLayout(self.pluginTab)
+        self.scrollArea = QtWidgets.QScrollArea()
+        self.scrollArea.setWidgetResizable(True)
+        self.scrollAreaWidgetContents = QtWidgets.QWidget()
+        self.l.addWidget(self.scrollArea)
+        self.scrollArea.setWidget(self.scrollAreaWidgetContents)
+        self.scrollAreaLayout = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents)
+        return self.pluginTab
 
-        self.nameLbl.setText(name)
-        self.repoLbl.setText(f"<html><head/><body><p><span style=\" font-weight:600; font-style:italic; color:#383838;\">{url}</span></p></body></html>")
-        # self.descriptLbl.setText("This is description of Plugin")
-        self.pushButton.setText("Download")
+    def createThemeTab(self):
+        self.themeTab = QtWidgets.QWidget()
+        self.l2 = QtWidgets.QVBoxLayout(self.themeTab)
+        self.scrollArea2 = QtWidgets.QScrollArea()
+        self.scrollArea2.setWidgetResizable(True)
+        self.scrollAreaWidgetContents2 = QtWidgets.QWidget()
+        self.l2.addWidget(self.scrollArea2)
+        self.scrollArea2.setWidget(self.scrollAreaWidgetContents2)
+        self.scrollAreaLayout2 = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents2)
+        return self.themeTab
 
-    def addCardsSequentially(self):
-        for i in range(1000):
-            self.addCard(i)
+    def addCard(self, l, c, url, name):
+        widget = QtWidgets.QWidget(parent=c)
+        widget.setMaximumSize(QtCore.QSize(16777215, 100))
+        cardLayout = QtWidgets.QHBoxLayout(widget)
+
+        cardTextLayout = QtWidgets.QVBoxLayout()
+        nameLbl = QtWidgets.QLabel(name)
+        repoLbl = QtWidgets.QLabel(f"<html><head/><body><p><span style=\" font-weight:600; font-style:italic; color:#383838;\">{url}</span></p></body></html>")
+        descriptLbl = QtWidgets.QLabel("This is a description of the Plugin")
+
+        cardTextLayout.addWidget(nameLbl)
+        cardTextLayout.addWidget(repoLbl)
+        cardTextLayout.addWidget(descriptLbl)
+        
+        cardLayout.addLayout(cardTextLayout)
+
+        pushButton = QtWidgets.QPushButton("Download", parent=widget)
+        pushButton.clicked.connect(lambda: self.install(url))
+        cardLayout.addWidget(pushButton)
+
+        l.addWidget(widget)
+
+    def install(self, url, site="github"):
+        try:
+            tempdirName = self.tempname(8)
+            path = os.path.join(self.tempDir or os.path.dirname(__file__), tempdirName)
+            os.makedirs(path)
+
+            filePath = os.path.join(path, "package.zip")
+            if site == "github":
+                urllib.request.urlretrieve(url + "/zipball/master", filePath)
+            else:
+                urllib.request.urlretrieve(url, filePath)
+
+            with zipfile.ZipFile(filePath, 'r') as f:
+                f.extractall(path)
+            os.remove(filePath)
+
+            extracted_dir = next(
+                os.path.join(path, d) for d in os.listdir(path)
+                if os.path.isdir(os.path.join(path, d))
+            )
+
+            finalPackageDir = os.path.join(self.packagesDir, url.split("/")[-1])
+            os.makedirs(self.packagesDir, exist_ok=True)
+
+            shutil.move(extracted_dir, finalPackageDir)
+            shutil.rmtree(path)
+
+            self.checkReqs(finalPackageDir)
+        except Exception as e:
+            print(e)
 
     def tempname(self, n):
         return "vt-" + str(uuid.uuid4())[:n + 1] + "-install"
 
-    def install(self, url, site="github"):
-        tempdirName = self.tempname(8)
-        path = os.path.join(self.tempDir or os.path.dirname(__file__), tempdirName)
-        os.makedirs(path)
-
-        filePath = os.path.join(path, "package.zip")
-        if site == "github":
-            urllib.request.urlretrieve(url + "/zipball/master", filePath)
-        else:
-            urllib.request.urlretrieve(url, filePath)
-
-        with zipfile.ZipFile(filePath, 'r') as f:
-            f.extractall(path)
-        os.remove(filePath)
-
-        extracted_dir = next(
-            os.path.join(path, d) for d in os.lisself.tdir(path)
-            if os.path.isdir(os.path.join(path, d))
-        )
-
-        finalPackageDir = os.path.join(self.packagesDir, url.split("/")[-1])
-        if not os.path.exists(self.packagesDir):
-            os.makedirs(self.packagesDir)
-
-        shutil.move(extracted_dir, finalPackageDir)
-        shutil.rmtree(path)
-
-        self.checkReqs(finalPackageDir)
-
-    def installModule(sellf, packages: str):
+    def installModule(self, packages: str):
+        import pip
         pip.main(["install", packages])
 
     def checkReqs(self, data):
@@ -599,44 +573,55 @@ class PackageManager(QtWidgets.QDialog):
                 self.install(url)
 
     def uninstall(self, name):
-        if os.path.isdir(os.path.join(self.packagesDir, name)):
-            shutil.rmtree(os.path.join(self.packagesDir, name))
+        dir_path = os.path.join(self.packagesDir, name)
+        if os.path.isdir(dir_path):
+            shutil.rmtree(dir_path)
 
     def search(self, name):
-        return os.path.join(self.packagesDir, name) if os.path.isdir(os.path.join(self.packagesDir, name)) else ""
+        dir_path = os.path.join(self.packagesDir, name)
+        return dir_path if os.path.isdir(dir_path) else ""
 
     def updateRepos(self):
-        urllib.request.urlretrieve("http://127.0.0.1:8000/update", os.path.join(self.window.cacheDir, "plugins.zip"))
+        update_url = "http://127.0.0.1:8000/update"
+        zip_path = os.path.join(self.window.cacheDir, "plugins.zip")
+        urllib.request.urlretrieve(update_url, zip_path)
 
-        with zipfile.ZipFile(os.path.join(self.window.cacheDir, "plugins.zip"), 'r') as f:
+        with zipfile.ZipFile(zip_path, 'r') as f:
             f.extractall(self.window.cacheDir)
-        os.remove(os.path.join(self.window.cacheDir, "plugins.zip"))
+        os.remove(zip_path)
 
-        for pl in os.listdir(os.path.join(self.window.cacheDir, "plugins")):
-            with open(os.path.join(self.window.cacheDir, "plugins", pl), "r+") as f:
+        self.processPlugins()
+        self.processThemes()
+
+    def processPlugins(self):
+        plugins_dir = os.path.join(self.window.cacheDir, "plugins")
+        for pl in os.listdir(plugins_dir):
+            with open(os.path.join(plugins_dir, pl), "r") as f:
                 try:
                     data = json.load(f)
-                    if "apiVersion" in data and "repo" in data:
-                        if "platform" in data:
-                            if StaticInfo.get_platform() not in data["platform"]:
-                                continue
+                    if all(k in data for k in ("apiVersion", "repo", "name")):
+                        if "platform" in data and StaticInfo.get_platform() not in data["platform"]:
+                            continue
                         if "requirements" in data:
-                            self.checkReqs(data["requirements"])
+                            try: self.checkReqs(data["requirements"])
+                            except: pass
                         if "modules" in data:
-                            self.installModule(" ".join(data["modules"]))
-                        self.addCard(self.scrollAreaWidgetContents, data["repo"], name=data.get("name"))            
-                except:
-                    pass
-        for th in os.listdir(os.path.join(self.window.cacheDir, "themes")):
-            with open(os.path.join(self.window.cacheDir, "themes", th), "r+") as f:
-                print(f.name)
+                            try: self.installModule(" ".join(data["modules"]))
+                            except: pass
+                        self.addCard(self.scrollAreaLayout, self.scrollAreaWidgetContents, data["repo"], name=data["name"])            
+                except Exception as e:
+                    self.window.api.App.setLogMsg(f"Error processing plugin {pl}: {e}")
+
+    def processThemes(self):
+        themes_dir = os.path.join(self.window.cacheDir, "themes")
+        for th in os.listdir(themes_dir):
+            with open(os.path.join(themes_dir, th), "r") as f:
                 try:
                     data = json.load(f)
-                    if "repo" in data:
-                        self.addCard(self.scrollAreaWidgetContents_2, data["repo"])            
-                except:
-                    pass
-        
+                    if all(k in data for k in ("repo", "name")): 
+                        self.addCard(self.scrollAreaLayout2, self.scrollAreaWidgetContents2, data["repo"], name=data["name"])            
+                except Exception as e:
+                    self.window.api.App.setLogMsg(f"Error processing theme {th}: {e}")        
 
 class StaticInfo:
     @staticmethod

@@ -306,9 +306,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.pl.registerCommand({"command": "closeTab"})
         self.pl.registerCommand({"command": "addTab"})
         self.pl.registerCommand({"command": "showPackages"})
-        self.pl.registerShortcuts([{"keys":  ["ctrl+w"], "command":  {"command":  "closeTab"}}])
-        self.pl.registerShortcuts([{"keys":  ["ctrl+n"], "command":  {"command":  "addTab"}}])
-        self.pl.registerShortcuts([{"keys":  ["ctrl+shift+p"], "command":  {"command":  "showPackages"}}])
 
         if self.mb and os.path.isfile(self.mb):        self.pl.parseMenu(json.load(open(self.mb, "r+")), self.menuBar())
         if self.cm and os.path.isfile(self.cm):        self.pl.parseMenu(json.load(open(self.cm, "r+")), self.contextMenu)
@@ -333,7 +330,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
     def setTheme(self, theme):
         themePath = os.path.join(self.themesDir, theme)
-        print(os.getcwd(), themePath)
 
         if os.path.isfile(themePath):
             self.setStyleSheet(open(themePath, "r+").read())
