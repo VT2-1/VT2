@@ -296,20 +296,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             "username": os.getlogin(),
         }
 
-        self.menus = {
-            "menuBar": self.menuBar(),
-            "textContextMenu": [],
-            "tabBarContextMenu": [],
-            "viewContextMenu": []
-        }
-
-        self.contextMenu = QtWidgets.QMenu(self)
         self.textContextMenu = QtWidgets.QMenu(self)
+        self.tabBarContextMenu = QtWidgets.QMenu(self)
 
         self.setupUi(self, self.argvParse())
 
         self.pl = PluginManager(self.pluginsDir, self)
-
         self.pl.registerCommand({"command": "setTheme"})
         self.pl.registerCommand({"command": "hideShowMinimap"})
         self.pl.registerCommand({"command": "settingsHotKeys"})

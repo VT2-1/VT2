@@ -291,7 +291,7 @@ class TextEdit(QtWidgets.QTextEdit):
         self.change_event = False
 
     def contextMenu(self, pos):
-        self.mw.contextMenu.exec(self.mapToGlobal(pos))
+        self.mw.textContextMenu.exec(self.mapToGlobal(pos))
 
     def insertCompletion(self, completion):
         tc = self.textCursor()
@@ -359,11 +359,6 @@ class TabBar(QtWidgets.QTabBar):
         self.setObjectName("tabBar")
         self.setMovable(True)
         self.setTabsClosable(True)
-        self.contextMenu = QtWidgets.QMenu(self)
-        self.customContextMenuRequested.connect(self.cmRequest)
-
-    def cmRequest(self, pos):
-        self.contextMenu.exec(self.mapToGlobal(pos))
 
     def setTabSaved(self, tab, saved):
         if not tab in [i.get("tab") for i in self.savedStates]:
@@ -393,6 +388,11 @@ class TabWidget (QtWidgets.QTabWidget):
         self.tabbar = TabBar(self)
         self.setTabBar(self.tabbar)
         self.currentChanged.connect(self.onCurrentChanged)
+        self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self.cmRequest)
+
+    def cmRequest(self, pos):
+        self.MainWindow.tabBarContextMenu.exec(self.mapToGlobal(pos))
 
     def onCurrentChanged(self, index):
         current_tab = self.currentWidget()

@@ -57,9 +57,9 @@ class PluginManager:
             for plugDir in os.listdir(self.plugin_directory):
                 fullPath = os.path.join(self.plugin_directory, plugDir)
                 os.chdir(fullPath)
-                if os.path.isdir(fullPath) and os.path.isfile(f"config.ini"):
+                if os.path.isdir(fullPath) and os.path.isfile(f"config.vt-conf"):
                     module = None
-                    info = self.initPlugin(os.path.join(fullPath, "config.ini"))
+                    info = self.initPlugin(os.path.join(fullPath, "config.vt-conf"))
                     if self.mainFile:
                         pyFile = self.mainFile
                         try:
@@ -88,25 +88,26 @@ class PluginManager:
     def loadMenu(self, f, module=None):
         try:
             menuFile = json.load(open(f, "r+"))
-            for menu in menuFile:
+            print(list(menuFile.keys()))
+            for menu in list(menuFile.keys()):
+                print(menu)
                 if menu == "menuBar" or menu == "mainMenu":
                     self.parseMenu(menuFile.get(menu), self.__window.menuBar(), pl=module)
                 elif menu == "textContextMenu":
-                    self.parseMenu(menuFile.get(menu), self.__window.contentMenu, pl=module)
+                    self.parseMenu(menuFile.get(menu), self.__window.textContextMenu, pl=module)
                 elif menu == "tabBarContextMenu":
-                    self.parseMenu(menuFile.get(menu), self.__window.tabWidget.tabBar().contextMenu, pl=module)
+                    self.parseMenu(menuFile.get(menu), self.__window.tabBarContextMenu, pl=module)
         except Exception as e:
             self.__window.api.App.setLogMsg(f"Failed load menu from '{f}': {e}")
 
     def initPlugin(self, path):
-        config = configparser.ConfigParser()
-        config.read(path)
+        config = json.load(open(path, "r+"))
 
-        self.name = config.get('DEFAULT', 'name', fallback='Unknown')
-        self.version = config.get('DEFAULT', 'version', fallback='1.0')
-        self.mainFile = config.get('DEFAULT', 'main', fallback='')
-        self.menuFile = config.get('DEFAULT', 'menu', fallback='')
-        self.scFile = config.get('DEFAULT', 'sc', fallback='')
+        self.name = config.get('name', 'Unknown')
+        self.version = config.get('version', '1.0')
+        self.mainFile = config.get('main', '')
+        self.menuFile = config.get('menu', '')
+        self.scFile = config.get('sc', '')
 
     def parseMenu(self, data, parent, pl=None):
         if isinstance(data, dict):
@@ -612,7 +613,6 @@ class VtAPI:
             themes = []
             for theme in os.listdir(self.__window.themesDir):
                 if os.path.isfile(os.path.join(self.__window.themesDir, theme)):
-                    print(theme)
                     themes.append({"caption": theme, "command": {"command": f"setTheme", "kwargs": {"theme": theme}}})
             self.App.updateMenu("themes", themes)
 
