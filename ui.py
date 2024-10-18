@@ -46,7 +46,7 @@ class Ui_MainWindow(object):
         self.MainWindow = MainWindow
         self.appPath = os.path.basename(__file__)
         self.appPath = os.path.dirname(argv[0])
-        self.themeFile = None
+        self.themeFile = ""
 
         self.settings()
 
@@ -218,7 +218,9 @@ class Ui_MainWindow(object):
                     if tabLog.get("activeTab"):
                         self.tabWidget.setCurrentIndex(int(tabLog.get("activeTab")))
                     if tabLog.get("splitterState"): self.treeSplitter.restoreState(tabLog.get("splitterState"))
-                    if tabLog.get("themeFile") and os.path.isfile(tabLog.get("themeFile")): self.api.App.setTheme(tabLog.get("themeFile"))
+                    if tabLog.get("themeFile") and os.path.isfile(tabLog.get("themeFile")): 
+                        self.themeFile = tabLog.get("themeFile")
+                    self.api.App.setTheme(self.themeFile)
         except ValueError:
             self.logger.log += f"\nFailed to restore window state. No file found at {stateFile}"
             open(stateFile)
