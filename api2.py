@@ -88,13 +88,15 @@ class PluginManager:
     def loadMenu(self, f, module=None):
         try:
             menuFile = json.load(open(f, "r+"))
+            localeDir = os.path.join(os.path.dirname(f), "locale")
+            if os.path.isdir(localeDir): self.__window.translate(localeDir)
             for menu in menuFile:
                 if menu == "menuBar" or menu == "mainMenu":
-                    self.parseMenu(menuFile.get(menu), self.__window.menuBar(), pl=module)
+                    self.parseMenu(menuFile.get(menu), self.__window.menuBar(), module, "MainMenu")
                 elif menu == "textContextMenu":
-                    self.parseMenu(menuFile.get(menu), self.__window.textContextMenu, pl=module)
+                    self.parseMenu(menuFile.get(menu), self.__window.textContextMenu, module, "TextContextMenu")
                 elif menu == "tabBarContextMenu":
-                    self.parseMenu(menuFile.get(menu), self.__window.tabBarContextMenu, pl=module)
+                    self.parseMenu(menuFile.get(menu), self.__window.tabBarContextMenu, module, "TabBarContextMenu")
         except Exception as e:
             self.__window.api.App.setLogMsg(f"Failed load menu from '{f}': {e}")
 
@@ -107,7 +109,7 @@ class PluginManager:
         self.menuFile = config.get('menu', '')
         self.scFile = config.get('sc', '')
 
-    def parseMenu(self, data, parent, pl=None):
+    def parseMenu(self, data, parent, pl=None, localemenu="MainMenu"):
         if isinstance(data, dict):
             data = [data]
 
@@ -122,14 +124,13 @@ class PluginManager:
                     if 'children' in item:
                         self.parseMenu(item['children'], fmenu, pl)
                 else:
-                    menu = self.__menu_map.setdefault(menu_id,
-                                                      QtWidgets.QMenu(item.get('caption', 'Unnamed'), self.__window))
+                    menu = self.__menu_map.setdefault(menu_id, QtWidgets.QMenu(QtCore.QCoreApplication.translate("MainMenu", item.get('caption', 'Unnamed')), self.__window))
                     menu.setObjectName(item.get('id'))
                     parent.addMenu(menu)
                     if 'children' in item:
                         self.parseMenu(item['children'], menu, pl)
             else:
-                action = QtGui.QAction(item.get('caption', 'Unnamed'), self.__window)
+                action = QtGui.QAction(QtCore.QCoreApplication.translate(localemenu, item.get('caption', 'Unnamed')), self.__window)
                 if 'shortcut' in item:
                     if not item['shortcut'] in self.shortcuts:
                         action.setShortcut(QtGui.QKeySequence(item['shortcut']))
@@ -165,7 +166,7 @@ class PluginManager:
                 args = command.get("args")
                 kwargs = command.get("kwargs")
                 checkable = command.get("checkable")
-                action: QtGui.QAction = c.get("action")
+                action = c.get("action")
                 if action and action.isCheckable():
                     checked_value = ckwargs.get("checked")
 

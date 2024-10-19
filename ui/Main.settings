@@ -1,5 +1,5 @@
 {
-    "appName": "VarTexter2",
+    "appName": "VT2",
     "apiVersion": 1.0,
     "packageDirs": {
         "Windows": "%USERPROFILE%/Documents/VarTexter2",
@@ -8,5 +8,6 @@
     },
     "menu": "Ui/Main.vt-menu",
     "hotkeys": "Ui/Main.vt-keys",
-    "logStdout": true
+    "logStdout": true,
+    "locale": "auto"
 }

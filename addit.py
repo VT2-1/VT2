@@ -644,6 +644,10 @@ class StaticInfo:
     @staticmethod
     def get_filedir(filepath):
         return os.path.dirname(os.path.abspath(filepath))
+    
+    @staticmethod
+    def defineLocale():
+        return QtCore.QLocale.system().name().split("_")[0]
 
     @staticmethod
     def replace_consts(data, constants):

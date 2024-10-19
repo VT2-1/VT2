@@ -47,6 +47,7 @@ class Ui_MainWindow(object):
         self.appPath = os.path.basename(__file__)
         self.appPath = os.path.dirname(argv[0])
         self.themeFile = ""
+        self.localeDirs = []
 
         self.settings()
 
@@ -57,6 +58,7 @@ class Ui_MainWindow(object):
         self.console = None
 
         self.logger = Logger(self.MainWindow)
+        self.translator = QtCore.QTranslator()
 
         self.centralwidget = QtWidgets.QWidget(parent=self.MainWindow)
         self.centralwidget.setObjectName("centralwidget")
@@ -135,6 +137,17 @@ class Ui_MainWindow(object):
             i = self.api.Tab.currentTabIndex()
         self.tabWidget.closeTab(i)
 
+    def defineLocale(self):
+        return QtCore.QLocale.system().name().split("_")[0]
+
+    def translate(self, d):
+        if os.path.isdir(d) and os.path.isfile(os.path.join(d, f"{self.locale}.vt-locale")):
+            if self.translator.load(os.path.join(d, f"{self.locale}.vt-locale")):
+                QtCore.QCoreApplication.installTranslator(self.translator)
+
+    def translateStr(self, s):
+        return self.tr(s)
+
     def showPackages(self):
         self.pl.pm.updateRepos()
         self.pl.pm.exec()
@@ -168,15 +181,16 @@ class Ui_MainWindow(object):
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
         self.menuFile = StaticInfo.replacePaths(os.path.join(self.packageDirs, self.settData.get("menu")))
         self.hotKeysFile = StaticInfo.replacePaths(os.path.join(self.packageDirs, self.settData.get("hotkeys")))
+        self.locale = self.settData.get("hotkeys")
         os.chdir(self.packageDirs)
 
     def settingsHotKeys(self):
-        if os.path.isfile(self.sc):
+        if os.path.isfile(self.hotKeysFile):
             openFile = self.api.getCommand("openFile")
             if openFile:
-                openFile.get("command")([self.sc])
+                openFile.get("command")([self.hotKeysFile])
             else:
-                QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. You can find file at {self.sc}")
+                QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. You can find file at {self.hotKeysFile}")
 
     def hideShowMinimap(self):
         tab = self.tabWidget.currentWidget()
@@ -202,28 +216,32 @@ class Ui_MainWindow(object):
 
     def windowInitialize(self):
         [os.makedirs(dir) for dir in [self.themesDir, self.pluginsDir, self.uiDir] if not os.path.isdir(dir)]
-        tabLog = {}
+        self.tabLog = {}
         stateFile = os.path.join(self.packageDirs, 'data.msgpack')
         try:
             if os.path.isfile(stateFile):
                 with open(stateFile, 'rb') as f:
                     packed_data = f.read()
-                    tabLog = msgpack.unpackb(packed_data, raw=False)
-                    for tab in tabLog.get("tabs") or []:
-                        tab = tabLog.get("tabs").get(tab)
-                        self.addTab(name=tab.get("name"), text=tab.get("text"), file=tab.get("file"), canSave=tab.get("canSave"))
-                        self.api.Tab.setTabSaved(self.api.Tab.currentTabIndex(), tab.get("saved"))
-                        self.MainWindow.setWindowTitle(f"{self.MainWindow.tabWidget.tabText(self.api.Tab.currentTabIndex())} - VarTexter2")
-                        self.api.Text.setTextSelection(self.api.Tab.currentTabIndex(), tab.get("selection")[0], tab.get("selection")[1])
-                    if tabLog.get("activeTab"):
-                        self.tabWidget.setCurrentIndex(int(tabLog.get("activeTab")))
-                    if tabLog.get("splitterState"): self.treeSplitter.restoreState(tabLog.get("splitterState"))
-                    if tabLog.get("themeFile") and os.path.isfile(tabLog.get("themeFile")): 
-                        self.themeFile = tabLog.get("themeFile")
-                    self.api.App.setTheme(self.themeFile)
+                    self.tabLog = msgpack.unpackb(packed_data, raw=False)
+                    if self.tabLog.get("themeFile") and os.path.isfile(self.tabLog.get("themeFile")): self.themeFile = self.tabLog.get("themeFile")
+                    if self.tabLog.get("locale"): self.locale = self.tabLog.get("locale")
+                    else:
+                        if self.locale == "auto":
+                            self.locale = self.defineLocale()
+                    self.api.App.setTheme(self.themeFile)  
         except ValueError:
-            self.logger.log += f"\nFailed to restore window state. No file found at {stateFile}"
-            open(stateFile)
+            self.logger.log += f"\nFailed to restore window state. No file found at {stateFile}"  
+
+    def restoreWState(self):
+        for tab in self.tabLog.get("tabs") or []:
+            tab = self.tabLog.get("tabs").get(tab)
+            self.addTab(name=tab.get("name"), text=tab.get("text"), file=tab.get("file"), canSave=tab.get("canSave"))
+            self.api.Tab.setTabSaved(self.api.Tab.currentTabIndex(), tab.get("saved"))
+            self.MainWindow.setWindowTitle(f"{self.MainWindow.tabWidget.tabText(self.api.Tab.currentTabIndex())} - VarTexter2")
+            self.api.Text.setTextSelection(self.api.Tab.currentTabIndex(), tab.get("selection")[0], tab.get("selection")[1])
+        if self.tabLog.get("activeTab"):
+            self.tabWidget.setCurrentIndex(int(self.tabLog.get("activeTab")))
+        if self.tabLog.get("splitterState"): self.treeSplitter.restoreState(self.tabLog.get("splitterState"))
 
     def closeEvent(self, e: QtCore.QEvent):
         self.saveWState()
@@ -236,6 +254,7 @@ class Ui_MainWindow(object):
         tabs = tabsInfo["tabs"] = {}
         i = self.api.Tab.currentTabIndex()
         tabsInfo["themeFile"] = self.themeFile
+        tabsInfo["locale"] = self.locale
         tabsInfo["activeTab"] = str(i)
         tabsInfo["splitterState"] = self.treeSplitter.saveState().data()
         stateFile = os.path.join(self.packageDirs, 'data.msgpack')
@@ -299,7 +318,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.textContextMenu = QtWidgets.QMenu(self)
         self.tabBarContextMenu = QtWidgets.QMenu(self)
 
+
         self.setupUi(self, self.argvParse())
+        self.windowInitialize()
 
         self.pl = PluginManager(self.pluginsDir, self)
         self.pl.registerCommand({"command": "setTheme"})
@@ -311,6 +332,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.pl.registerCommand({"command": "showPackages"})
 
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
+        if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
 
         self.pl.load_plugins()
         self.api.loadThemes(self.menuBar())
@@ -320,7 +342,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.pl.clearCache()
 
-        self.windowInitialize()
+        self.restoreWState()
 
         self.api.App.setTreeWidgetDir("/")
 
