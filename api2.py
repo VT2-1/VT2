@@ -11,6 +11,8 @@ BLOCKED = [
     "PyQt6"
 ]
 
+oldCoreApp = QtCore.QCoreApplication
+
 class SafeImporter:
     def __init__(self, disallowed_imports):
         self.disallowed_imports = disallowed_imports
@@ -65,16 +67,18 @@ class PluginManager:
                         try:
                             with SafeImporter(BLOCKED):
                                 sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
+                                sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
                                 sys.path.insert(0, fullPath)
                                 module = importModule(pyFile, self.name + "Plugin")
                                 if hasattr(module, "initAPI"):
                                     module.initAPI(self.__window.api)
+                                sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                         except Exception as e:
                             self.__window.api.App.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
                         finally:
                             sys.path.pop(0)
                     if self.menuFile:
-                        self.loadMenu(self.menuFile)
+                        self.loadMenu(self.menuFile, module)
                     if self.scFile:
                         try:
                             self.registerShortcuts(json.load(open(self.scFile, "r+")))
@@ -344,6 +348,11 @@ class Tab:
     def getTabText(self, i):
         tab = self.__window.tabWidget.widget(i)
         text = tab.textEdit.toPlainText()
+        return text
+
+    def getTabHtml(self, i):
+        tab = self.__window.tabWidget.widget(i)
+        text = tab.textEdit.toHtml()
         return text
 
     def setTabText(self, i, text: str | None):
