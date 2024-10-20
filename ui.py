@@ -6,6 +6,7 @@ import msgpack, io
 
 from addit import *
 from api2 import PluginManager, VtAPI
+from test import MyAPI
 
 class Logger:
     def __init__(self, window):
@@ -95,6 +96,7 @@ class Ui_MainWindow(object):
         self.MainWindow.setStatusBar(self.statusbar)
 
         self.api = VtAPI(self.MainWindow)
+        self.testApi = MyAPI()
         self.logger.log = "VarTexter window loading..."
 
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
@@ -129,6 +131,10 @@ class Ui_MainWindow(object):
         self.tabWidget.addTab(self.tab, "")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), name or "Untitled")
         self.api.Tab.setTab(-1)
+
+        new_view = MyAPI.View(self.testApi, self, qwclass=self.tab)
+        self.testApi.active_window.views.append(new_view)
+        self.testApi.active_window.active_view = new_view
 
         self.api.SigSlots.tabCreated.emit()
 
@@ -320,6 +326,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
 
         self.setupUi(self, self.argvParse())
+        self.testApi.active_window = self.testApi.Window(self.testApi, qmwclass=self)
         self.windowInitialize()
 
         self.pl = PluginManager(self.pluginsDir, self)
@@ -364,6 +371,8 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
     w.show()
+    # print(w.testApi.active_window.active_view.insert(w.testApi.Point(0, 0), "djelkjl"))
+    # print(w.testApi.active_window.active_view.replace(w.testApi.Region(0, 3), "djelkjl"))
     sys.exit(app.exec())
 
 if __name__ == "__main__":
