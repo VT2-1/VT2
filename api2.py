@@ -1,5 +1,5 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-import os, sys, configparser, json, importlib, re, subprocess, platform
+import os, sys, configparser, json, importlib, re, subprocess, platform, inspect
 import importlib.util
 import PyQt6
 import os, json
@@ -7,11 +7,13 @@ import builtins
 
 from addit import PackageManager
 
+
 BLOCKED = [
     "PyQt6"
 ]
 
 oldCoreApp = QtCore.QCoreApplication
+
 
 class SafeImporter:
     def __init__(self, disallowed_imports):
@@ -66,15 +68,16 @@ class PluginManager:
                         pyFile = self.mainFile
                         try:
                             with SafeImporter(BLOCKED):
-                                sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
-                                sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
+                                # sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
+                                # sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
                                 sys.path.insert(0, fullPath)
                                 module = importModule(pyFile, self.name + "Plugin")
                                 if hasattr(module, "initAPI"):
                                     module.initAPI(self.__window.api)
-                                sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
+                                    self.newRegCommands(module)
+                                # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                         except Exception as e:
-                            self.__window.api.App.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
+                            self.__window.api.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
                         finally:
                             sys.path.pop(0)
                     if self.menuFile:
@@ -83,7 +86,7 @@ class PluginManager:
                         try:
                             self.registerShortcuts(json.load(open(self.scFile, "r+")))
                         except Exception as e:
-                            self.__window.api.App.setLogMsg(
+                            self.__window.api.activeWindow.setLogMsg(
                                 f"Failed load shortcuts for '{self.name}' from '{self.scFile}': {e}")
 
         finally:
@@ -102,7 +105,7 @@ class PluginManager:
                 elif menu == "tabBarContextMenu":
                     self.parseMenu(menuFile.get(menu), self.__window.tabBarContextMenu, module, "TabBarContextMenu")
         except Exception as e:
-            self.__window.api.App.setLogMsg(f"Failed load menu from '{f}': {e}")
+            self.__window.api.activeWindow.setLogMsg(f"Failed load menu from '{f}': {e}")
 
     def initPlugin(self, path):
         config = json.load(open(path, "r+"))
@@ -141,7 +144,7 @@ class PluginManager:
                         action.setStatusTip(item['shortcut'])
                         self.shortcuts.append(item['shortcut'])
                     else:
-                        self.__window.api.App.setLogMsg(
+                        self.__window.api.activeWindow.setLogMsg(
                             f"Shortcut '{item['shortcut']}' for function '{item['command']}' is already used.")
 
                 if 'command' in item:
@@ -165,6 +168,7 @@ class PluginManager:
         ckwargs = kwargs
         command = c
         c = self.regCommands.get(command.get("command"))
+        print(c)
         if c:
             try:
                 args = command.get("args")
@@ -179,15 +183,23 @@ class PluginManager:
                     else:
                         new_checked_state = not action.isChecked()
                         action.setChecked(new_checked_state)
-                out = c.get("command")(*args or [], **kwargs or {})
-                self.__window.api.App.setLogMsg(f"Executed command '{command}' with args '{args}', kwargs '{kwargs}'")
+                cl = c.get("command")
+                print(cl)
+                if issubclass(cl, VtAPI.Plugin.TextCommand):
+                    c = cl(self.__window.api, self.__window.api.activeWindow.activeView)
+                elif issubclass(cl, VtAPI.Plugin.WindowCommand):
+                    c = cl(self.__window.api, self.__window.api.activeWindow)
+                elif issubclass(cl, VtAPI.Plugin.ApplicationCommand):
+                    c = cl(self.__window.api)
+                out = c.run(*args or [], **kwargs or {})
+                self.__window.api.activeWindow.setLogMsg(f"Executed command '{command}' with args '{args}', kwargs '{kwargs}'")
                 if out:
-                    self.__window.api.App.setLogMsg(f"Command '{command}' returned '{out}'")
+                    self.__window.api.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'")
             except Exception as e:
-                self.__window.api.App.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
+                self.__window.api.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
                 print(e)
         else:
-            self.__window.api.App.setLogMsg(f"Command '{command}' not found")
+            self.__window.api.activeWindow.setLogMsg(f"Command '{command}' not found")
 
     def registerShortcuts(self, data):
         for sh in data:
@@ -206,13 +218,15 @@ class PluginManager:
                                          self.executeCommand(cmd)
                                          )
                 self.__window.addAction(action)
-                self.__window.api.App.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' registered.")
+                self.__window.api.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' registered.")
             else:
-                self.__window.api.App.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' already used.")
+                self.__window.api.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' already used.")
 
     def registerCommand(self, commandInfo):
         command = commandInfo.get("command")
         if type(command) == str:
+            commandN = command
+        elif inspect.isclass(command):
             commandN = command
         else:
             commandN = command.get("command")
@@ -221,6 +235,12 @@ class PluginManager:
 
         args = commandInfo.get("args", [])
         kwargs = commandInfo.get("kwargs", {})
+
+        if 'shortcut' in commandInfo:
+            if not commandInfo['shortcut'] in self.shortcuts:
+                action = QtGui.QAction("", self.__window)
+                action.setShortcut(QtGui.QKeySequence(commandInfo['shortcut']))
+                self.shortcuts.append(commandInfo['shortcut'])
 
         if pl:
             try:
@@ -233,9 +253,12 @@ class PluginManager:
                     "plugin": pl,
                 }
             except (ImportError, AttributeError, TypeError) as e:
-                self.__window.api.App.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
+                self.__window.api.activeWindow.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
         else:
-            command_func = getattr(self.__window, commandN, None)
+            if not inspect.isclass(commandN):
+                command_func = getattr(sys.modules[__name__], commandN, None)
+            else:
+                command_func = commandN
             if command_func:
                 self.regCommands[commandN] = {
                     "action": action,
@@ -245,7 +268,7 @@ class PluginManager:
                     "plugin": None,
                 }
             else:
-                self.__window.api.App.setLogMsg(f"Command '{commandN}' not found")
+                self.__window.api.activeWindow.setLogMsg(f"Command '{commandN}' not found")
 
     def registerCommands(self):
         for commandInfo in self.commands:
@@ -272,9 +295,9 @@ class PluginManager:
                         "plugin": pl,
                     }
                 except (ImportError, AttributeError, TypeError) as e:
-                    self.__window.api.App.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
+                    self.__window.api.activeWindow.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
             else:
-                command_func = getattr(self.__window, commandN, None)
+                command_func = getattr(sys.modules[__name__], commandN, None)
                 if command_func:
                     self.regCommands[commandN] = {
                         "action": action,
@@ -284,7 +307,11 @@ class PluginManager:
                         "plugin": None,
                     }
                 else:
-                    self.__window.api.App.setLogMsg(f"Command '{commandN}' not found")
+                    self.__window.api.activeWindow.setLogMsg(f"Command '{commandN}' not found")
+    def newRegCommands(self, m):
+        classes = inspect.getmembers(m, inspect.isclass)
+        for cl in classes:
+            self.commands.append(cl)
 
     def findAction(self, parent_menu, caption=None, command=None):
         for action in parent_menu.actions():
@@ -331,300 +358,602 @@ class PluginManager:
     def clearCache(self):
         del self.dPath, self.commands, self.shortcuts
 
-class Tab:
-    def __init__(self, w):
-        self.__window = w
+class VtAPI:
+    def __init__(self):
+        self.__app = QtWidgets.QApplication.instance()
+        self.appName = self.__app.applicationName()
+        self.windows = []
+        self.activeWindow = None
 
-    def currentTabIndex(self):
-        return self.__window.tabWidget.indexOf(self.__window.tabWidget.currentWidget())
+    class Window:
+        def __init__(self, api, views=None, activeView=None, qmwclass: QtWidgets.QMainWindow=None):
+            self.__api = api
+            self.__mw = qmwclass
+            self.signals = VtAPI.Signals(self.__mw)
+            self.views = views or []
+            self.activeView = activeView
 
-    def getTabTitle(self, i):
-        return self.__window.tabWidget.tabText(i)
+            self.__api.windows.append(self)
 
-    def setTabTitle(self, i, text):
-        tab = self.__window.tabWidget.widget(i)
-        return self.__window.tabWidget.setTabText(self.__window.tabWidget.indexOf(tab), text)
+        def newFile(self):
+            self.__mw.addTab()
+            tab = self.__mw.tabWidget.currentWidget()
+        
+        def openFiles(self, files):
+            self.__mw.pl.executeCommand({"command": "openFile", "args": files})
+        
+        def saveFile(self, view=False):
+            self.__mw.pl.executeCommand({"command": "saveFile"})
+        
+        def activeView(self):
+            return self.activeView
+        
+        def views(self):
+            return self.views
+        
+        def focus(self, view):
+            self.activeView = view
+        
+        def runCommand(self, command):
+            self.__mw.pl.executeCommand(command)
+        
+        def showQuickPanel(self, items, on_select, on_highlight=None, flags=0, selected_index=-1):
+            print(f"Showing quick panel with items: {items}")
+        
+        def showInputPanel(self, prompt, initial_text, on_done, on_change=None, on_cancel=None):
+            print(f"Showing input panel with prompt: {prompt} and initial text: {initial_text}")
+        
+        def getCommand(self, name):
+            return self.__mw.pl.regCommands.get(name)
 
-    def getTabText(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        text = tab.textEdit.toPlainText()
-        return text
+        def getTheme(self):
+            return self.__mw.themeFile
 
-    def getTabHtml(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        text = tab.textEdit.toHtml()
-        return text
+        def setTheme(self, theme):
+            themePath = os.path.join(self.__mw.themesDir, theme)
+            if os.path.isfile(themePath):
+                self.__mw.setStyleSheet(open(themePath, "r+").read())
 
-    def setTabText(self, i, text: str | None):
-        tab = self.__window.tabWidget.widget(i)
-        tab.textEdit.setText(text)
-        return text
+        def getLog(self):
+            return self.__mw.logger.log
 
-    def getTabFile(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        return tab.file
+        def setLogMsg(self, msg):
+            self.__mw.logger.log += f"\n{msg}"
 
-    def setTabFile(self, i, file):
-        tab = self.__window.tabWidget.widget(i)
-        tab.file = file
-        return tab.file
+        def getTreeModel(self):
+            return self.model
 
-    def getTabCanSave(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        return tab.canSave
+        def getModelElement(self, i):
+            return self.model.filePath(i)
 
-    def setTabCanSave(self, i, b: bool):
-        tab = self.__window.tabWidget.widget(i)
-        tab.canSave = b
-        return b
+        def setTreeWidgetDir(self, dir):
+            self.model = QtGui.QFileSystemModel()
+            self.model.setRootPath(dir)
+            self.__mw.treeView.setModel(self.model)
+            self.__mw.treeView.setRootIndex(self.model.index(dir))
+            return self.model
 
-    def getTabCanEdit(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        return tab.canEdit
+        def setTheme(self, theme):
+            themePath = os.path.join(self.__mw.themesDir, theme)
+            if os.path.isfile(themePath):
+                self.__mw.setStyleSheet(open(themePath, "r+").read())
 
-    def setTabCanEdit(self, i, b: bool):
-        tab = self.__window.tabWidget.widget(i)
-        tab.canEdit = b
-        tab.textEdit.setReadOnly(b)
-        tab.textEdit.setDisabled(b)
-        return b
+        def setTab(self, i):
+            self.__mw.tabWidget.setCurrentIndex(i - 1)
 
-    def getTabEncoding(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        return tab.encoding
+        def updateMenu(self, menu, data):
+            menuClass = self.__mw.pl.findMenu(self.__mw.menuBar(), menu)
+            if menu:
+                self.__mw.pl.clearMenu(self.__mw.menuBar(), menu)
+                self.__mw.pl.parseMenu(data, menuClass)
 
-    def setTabEncoding(self, i, enc):
-        tab = self.__window.tabWidget.widget(i)
-        tab.encoding = enc
-        return enc
+        def addDockWidget(self, areas, dock: 'VtAPI.Widgets.DockWidget'):
+            self.__mw.addDockWidget(areas, dock)
+        
+        def isDockWidget(self, area):
+            dock_widgets = self.__mw.findChildren(QtWidgets.QDockWidget)
+            for dock in dock_widgets:
+                if self.__mw.dockWidgetArea(dock) == area: return dock
 
-    def setTab(self, i):
-        if i <= -1:
-            self.__window.tabWidget.setCurrentIndex(self.__window.tabWidget.count() - 1)
-        else:
-            self.__window.tabWidget.setCurrentIndex(i - 1)
-        return i
+        def loadThemes(self, menu):
+            themeMenu = self.__mw.pl.findMenu(menu, "themes")
+            if themeMenu:
+                themes = []
+                for theme in os.listdir(self.__mw.themesDir):
+                    if os.path.isfile(os.path.join(self.__mw.themesDir, theme)):
+                        themes.append({"caption": theme, "command": {"command": f"setTheme", "kwargs": {"theme": theme}}})
+                self.updateMenu("themes", themes)
 
-    def getTabSaved(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        return self.__window.tabWidget.isSaved(tab)
+    class View:
+        def __init__(self, api, window, qwclass=None, text="", syntaxFile=None, file_name=None, read_only=False):
+            self.__api = api
+            self.window = window
+            self.__tab = qwclass
+            self.__tabWidget = self.__tab.parentWidget().parentWidget()
+            self.text = text
+            self.syntaxFile = syntaxFile
+            self.file_name = file_name
+            self.read_only = read_only
+            self.tab_title = None
+            self.tab_encoding = None
+        
+        def tabIndex(self):
+            return self.__tabWidget.currentIndex()
 
-    def setTabSaved(self, i, b: bool):
-        tab = self.__window.tabWidget.widget(i)
-        self.__window.tabWidget.tabBar().setTabSaved(tab or self.__window.tabWidget.currentWidget(), b)
-        return b
+        def window(self):
+            return self.window
 
-class Text:
-    def __init__(self, w):
-        self.__window = w
+        def getTitle(self):
+            return self.__tabWidget.tabText(self.__tabWidget.indexOf(self.__tab))
 
-    def getTextSelection(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        return tab.textEdit.textCursor().selectedText()
+        def setTitle(self, text):
+            return self.__tabWidget.setText(self.__tabWidget.indexOf(self.__tab), text)
 
-    def getTextCursor(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        return tab.textEdit.textCursor()
+        def getText(self):
+            text = self.__tab.textEdit.toPlainText()
+            return text
 
-    def setTextSelection(self, i, s, e):
-        tab = self.__window.tabWidget.widget(i)
-        cursor = tab.textEdit.textCursor()
-        cursor.setPosition(s)
-        cursor.setPosition(e, QtGui.QTextCursor.MoveMode.KeepAnchor)
-        tab.textEdit.setTextCursor(cursor)
+        def getHtml(self):
+            text = self.__tab.textEdit.toHtml()
+            return text
 
-    def getCompletePos(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        current_text = tab.textEdit.toPlainText()
-        cursor_position = tab.textEdit.textCursor().position()
+        def setText(self, text):
+            self.__tab.textEdit.setText(text)
+            return text
 
-        line_number = tab.textEdit.textCursor().blockNumber()
-        column = tab.textEdit.textCursor().columnNumber()
+        def getFile(self):
+            return self.__tab.file
 
-        lines = current_text.splitlines()
-        if 0 <= line_number < len(lines):
-            line = lines[line_number]
-            return current_text, line_number + 1, column
-        else:
-            return current_text, 0, 0
+        def setFile(self, file):
+            self.__tab.file = file
+            return self.__tab.file
 
-    def setCompleteList(self, i, lst):
-        tab = self.__window.tabWidget.widget(i)
-        self.completer = tab.textEdit.completer.updateCompletions(lst)
+        def getCanSave(self):
+            return self.__tab.canSave
 
-    def setHighlighter(self, i, hl):
-        tab = self.__window.tabWidget.widget(i)
-        tab.textEdit.highLighter.highlightingRules = hl
+        def setCanSave(self, b: bool):
+            self.__tab.canSave = b
+            return b
 
-    def rehighlite(self, i):
-        tab = self.__window.tabWidget.widget(i)
-        if tab:
-            tab.textEdit.highLighter.rehighlight()
+        def getCanEdit(self):
+            return self.__tab.canEdit
 
-class Commands:
-    def __init__(self, w):
-        self.__window = w
+        def setReadOnly(self, b: bool):
+            self.__tab.canEdit = b
+            self.__tab.textEdit.setReadOnly(b)
+            self.__tab.textEdit.setDisabled(b)
+            return b
 
-    def registerCommand(self, data):
-        self.__window.pl.registerCommand(data)
+        def getEncoding(self):
+            return self.__tab.encoding
 
-    def loadShortcuts(self, data):
-        self.__window.pl.registerShortcuts(data)
+        def setEncoding(self, enc):
+            self.__tab.encoding = enc
+            return enc
 
-class App:
-    def __init__(self, w):
-        self.__window = w
-        self.packagesDirs = self.__window.packageDirs
-        self.pluginsDir = self.__window.pluginsDir
-        self.themesDir = self.__window.themesDir
-        self.uiDir = self.__window.uiDir
+        def getSaved(self):
+            return self.__tabWidget.isSaved(self.__tab)
 
-    def openFileDialog(e=None):
-        dlg = QtWidgets.QFileDialog.getOpenFileNames(None, "Open File", "", "All Files (*);;Text Files (*.txt)")
-        return dlg
+        def setSaved(self, b: bool):
+            self.__tabWidget.tabBar().setTabSaved(self.__tab or self.__tabWidget.currentWidget(), b)
+            return b
 
-    def saveFileDialog(e=None):
-        dlg = QtWidgets.QFileDialog.getSaveFileName()
-        return dlg
+        def size(self):
+            return len(self.__tab.textEdit.toPlainText())
 
-    def openDirDialog(self, e=None):
-        dlg = QtWidgets.QFileDialog.getExistingDirectory(
-            self.__window.treeView,
-            caption="VarTexter - Get directory",
-        )
-        return str(dlg)
+        def substr(self, region):
+            return self.__tab.textEdit.toPlainText()[region.begin():region.end()]
 
-    def getTheme(self):
-        return self.__window.themeFile
+        def sel(self):
+            pass
 
-    def setTheme(self, theme):
-        themePath = os.path.join(self.__window.themesDir, theme)
-        if os.path.isfile(themePath):
-            self.__window.setStyleSheet(open(themePath, "r+").read())
+        def insert(self, point, string):
+            t = self.__tab.textEdit.toPlainText()
+            lines = self.text.splitlines()
+            line_index = point.x
+            char_index = point.y
+            
+            point = sum(len(lines[i]) + 1 for i in range(line_index)) + char_index
+            self.__tab.textEdit.setPlainText(t[:point] + string + t[point:])
+        
+        def erase(self, region):
+            t = self.__tab.textEdit.toPlainText()
+            self.__tab.textEdit.setPlainText(t[:region.begin()] + t[region.end():])
+        
+        def replace(self, region, string):
+            t = self.__tab.textEdit.toPlainText()
+            self.__tab.textEdit.setPlainText(t[:region.begin()] + string + t[region.end():])
 
-    def getLog(self):
-        return self.__window.logger.log
+        def find(self, pattern, start_point, flags=0):
+            pass
 
-    def setLogMsg(self, msg):
-        self.__window.logger.log += f"\n{msg}"
+        def findAll(self, pattern, flags=0):
+            pass
 
-    def getTreeModel(self):
-        return self.model
+        def setSyntaxFile(self, syntaxFilePath):
+            self.syntaxFile = syntaxFilePath
 
-    def getModelElement(self, i):
-        return self.model.filePath(i)
+        def settings(self):
+            pass
 
-    def setTreeWidgetDir(self, dir):
-        self.model = QtGui.QFileSystemModel()
-        self.model.setRootPath(dir)
-        self.__window.treeView.setModel(self.model)
-        self.__window.treeView.setRootIndex(self.model.index(dir))
-        return self.model
+        def fileName(self):
+            return self.fileName
 
-    def setTheme(self, theme):
-        themePath = os.path.join(self.__window.themesDir, theme)
-        if os.path.isfile(themePath):
-            self.__window.setStyleSheet(open(themePath, "r+").read())
+        def isDirty(self):
+            return self.__window.tabWidget.isSaved(self.__tab)
 
-    def updateMenu(self, menu, data):
-        menuClass = self.__window.pl.findMenu(self.__window.menuBar(), menu)
-        if menu:
-            self.__window.pl.clearMenu(self.__window.menuBar(), menu)
-            self.__window.pl.parseMenu(data, menuClass)
+        def isReadOnly(self):
+            return self.read_only
 
-class FSys:
-    def __init__(self, w):
-        self.__window = w
+        def getTextSelection(self):
+            return self.__tab.textEdit.textCursor().selectedText()
 
-    def osModule(self):
-        return os
+        def getTextCursor(self):
+            return self.__tab.textEdit.textCursor()
 
-    def sysModule(self):
-        return sys
+        def setTextSelection(self, s, e):
+            cursor = self.__tab.textEdit.textCursor()
+            cursor.setPosition(s)
+            cursor.setPosition(e, QtGui.QTextCursor.MoveMode.KeepAnchor)
+            self.__tab.textEdit.setTextCursor(cursor)
 
-    def jsonModule(self):
-        return json
+        def getCompletePos(self):
+            current_text = self.__tab.textEdit.toPlainText()
+            cursor_position = self.__tab.textEdit.textCursor().position()
 
-    def importlibModule(self):
-        return importlib
+            line_number = self.__tab.textEdit.textCursor().blockNumber()
+            column = self.__tab.textEdit.textCursor().columnNumber()
 
-    def PyQt6Module(self):
-        return PyQt6
+            lines = current_text.splitlines()
+            if 0 <= line_number < len(lines):
+                line = lines[line_number]
+                return current_text, line_number + 1, column
+            else:
+                return current_text, 0, 0
 
-    def reModule(self):
-        return re
+        def setCompleteList(self, lst):
+            self.completer = self.__tab.textEdit.completer.updateCompletions(lst)
 
-    def sprModule(self):
-        return subprocess
+        def setHighlighter(self, hl):
+            self.__tab.textEdit.highLighter.highlightingRules = hl
 
-    def platformModule(self):
-        return platform
-    
+        def rehighlite(self):
+            self.__tab.textEdit.highLighter.rehighlight()
+
+        def show_popup(self, content, flags=0, location=-1, max_width=320, max_height=240, on_navigate=None, on_hide=None):
+            self.content = content
+            self.flags = flags
+            self.location = location
+            self.max_width = max_width
+            self.max_height = max_height
+            self.on_navigate = on_navigate
+            self.on_hide = on_hide
+
+            self.dialog = QtWidgets.QDialog()
+            self.dialog.setWindowFlags(self.flags)
+            self.dialog.setMaximumWidth(self.max_width)
+            self.dialog.setMaximumHeight(self.max_height)
+
+            self.dialog.setLayout(self.content)
+
+            self.dialog.exec()
+
+    class Selection:
+        def __init__(self, regions=None):
+            self.regions = regions or []
+
+        def clear(self):
+            self.regions = []
+        
+        def add(self, region):
+            self.regions.append(region)
+        
+        def subtract(self, region):
+            self.regions = [r for r in self.regions if r != region]
+        
+        def contains(self, point):
+            return any(region.contains(point) for region in self.regions)
+
+        def text(self, view, region):
+            return view.__tab.toPlainText()[region.begin():region.end()]
+
+    class Region:
+        def __init__(self, a, b):
+            self.a = a
+            self.b = b
+        
+        def begin(self):
+            return min(self.a, self.b)
+        
+        def end(self):
+            return max(self.a, self.b)
+        
+        def contains(self, point):
+            return self.begin() <= point <= self.end()
+
+    class Settings:
+        def __init__(self, settings=None):
+            self.settings = settings or {}
+
+        def get(self, key, default=None):
+            return self.settings.get(key, default)
+        
+        def set(self, key, value):
+            self.settings[key] = value
+        
+        def erase(self, key):
+            if key in self.settings:
+                del self.settings[key]
+        
+        def has(self, key):
+            return key in self.settings
+
+    class Dialogs:
+        def infoMessage(string):
+            QtWidgets.QMessageBox.information(None, "Message", string)
+        def warningMessage(string):
+            QtWidgets.QMessageBox.warning(None, "Warning", string)
+        def errorMessage(string):
+            QtWidgets.QMessageBox.critical(None, "Error", string)
+
+        def okCancelDialog(string):
+            result = QtWidgets.QMessageBox.question(None, "Confirmation", string,
+                                        QtWidgets.QMessageBox.StandardButton.Ok | QtWidgets.QMessageBox.StandardButton.Cancel,
+                                        QtWidgets.QMessageBox.StandardButton.Cancel)
+            return result == QtWidgets.QMessageBox.StandardButton.Ok
+
+        def yesNoCancelDialog(string):
+            result = QtWidgets.QMessageBox.question(None, "Confirmation", string,
+                                        QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No | QtWidgets.QMessageBox.StandardButton.Cancel,
+                                        QtWidgets.QMessageBox.StandardButton.Cancel)
+            if result == QtWidgets.QMessageBox.StandardButton.Yes:
+                return "yes"
+            elif result == QtWidgets.QMessageBox.StandardButton.No:
+                return "no"
+            else:
+                return "cancel"
+
+        def openFileDialog(e=None):
+            dlg = QtWidgets.QFileDialog.getOpenFileNames(None, "Open File", "", "All Files (*);;Text Files (*.txt)")
+            return dlg
+
+        def saveFileDialog(e=None):
+            dlg = QtWidgets.QFileDialog.getSaveFileName()
+            return dlg
+
+        def openDirDialog(self, e=None):
+            dlg = QtWidgets.QFileDialog.getExistingDirectory(
+                self.__window.treeView,
+                caption="VarTexter - Get directory",
+            )
+            return str(dlg)
+
+    class Plugin:
+        class TextCommand:
+            def __init__(self, api, view):
+                self.api = api
+                self.view = view
+
+            def run(self, edit):
+                ...
+            
+            def is_enabled(self):
+                pass
+            
+            def is_visible(self):
+                pass
+            
+            def description(self):
+                pass
+
+        class WindowCommand:
+            def __init__(self, api, window):
+                self.api = api
+                self.window = window
+
+            def run(self):
+                ...
+            
+            def is_enabled(self):
+                pass
+            
+            def is_visible(self):
+                pass
+            
+            def description(self):
+                pass
+
+        class ApplicationCommand:
+            def __init__(self, api):
+                self.api = api
+
+            def run(self):
+                ...
+            
+            def is_enabled(self):
+                pass
+            
+            def is_visible(self):
+                pass
+            
+            def description(self):
+                pass
+
+    class Point:
+        def __init__(self, x=0, y=0):
+            """Инициализация точки с координатами x и y."""
+            self.x = x
+            self.y = y
+
+        def move(self, dx, dy):
+            """Перемещение точки на (dx, dy)."""
+            self.x += dx
+            self.y += dy
+
+        def distance_to(self, other):
+            """Расчет расстояния до другой точки."""
+            if not isinstance(other, VtAPI.Point):
+                raise ValueError("The other must be an instance of Point.")
+            return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5
+
+        def __str__(self):
+            """Строковое представление точки."""
+            return f"Point({self.x}, {self.y})"
+
+        def __eq__(self, other):
+            """Сравнение двух точек."""
+            if isinstance(other, VtAPI.Point):
+                return self.x == other.x and self.y == other.y
+            return False
+
+    class Signals(QtCore.QObject):
+        commandsLoaded = QtCore.pyqtSignal()
+        tabClosed = QtCore.pyqtSignal(int, str)
+        tabCreated = QtCore.pyqtSignal()
+        tabChanged = QtCore.pyqtSignal()
+        textChanged = QtCore.pyqtSignal()
+        windowClosed = QtCore.pyqtSignal()
+
+        treeWidgetClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
+        treeWidgetDoubleClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
+        treeWidgetActivated = QtCore.pyqtSignal()
+
+        def __init__(self, w):
+            super().__init__(w)
+            self.__window = w
+
+            self.__window.treeView.doubleClicked.connect(self.onDoubleClicked)
+
+        def tabChngd(self, index):
+            if index > -1:
+                self.__window.setWindowTitle(
+                    f"{os.path.normpath(self.__window.api.Tab.getTabFile(index) or 'Untitled')} - {self.__window.appName}")
+                if index >= 0: self.__window.encodingLabel.setText(self.__window.tabWidget.widget(index).encoding)
+                self.updateEncoding()
+            else:
+                self.__window.setWindowTitle(self.__window.appName)
+            self.tabChanged.emit()
+
+        def updateEncoding(self):
+            e = self.__window.api.Tab.getTabEncoding(self.__window.api.Tab.currentTabIndex())
+            self.__window.encodingLabel.setText(e)
+
+        def onDoubleClicked(self, index):
+            self.treeWidgetDoubleClicked.emit(index)
+
+        def onClicked(self, index):
+            self.treeWidgetClicked.emit(index)
+
+        def onActivated(self):
+            self.treeWidgetActivated.emit()
+
+    class Widgets:
+        class DockWidget(QtWidgets.QDockWidget):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.__window = None
+
+            def parent(self):
+                return None
+
+            def window(self):
+                return None
+
+    def activeWindow(self) -> Window:
+        return self.activeWindow
+
+    def windows(self):
+        return self.windows
+
+    def loadSettings(self, name):
+        pass
+
+    def saveSettings(self, name):
+        pass
+
     def importModule(self, name):
         return importlib.import_module(name)
 
-class SigSlots(QtCore.QObject):
-    commandsLoaded = QtCore.pyqtSignal()
-    tabClosed = QtCore.pyqtSignal(int, str)
-    tabCreated = QtCore.pyqtSignal()
-    tabChanged = QtCore.pyqtSignal()
-    textChanged = QtCore.pyqtSignal()
-    windowClosed = QtCore.pyqtSignal()
+    def statusMessage(self, string):
+        print(f"Status: {string}")
 
-    treeWidgetClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
-    treeWidgetDoubleClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
-    treeWidgetActivated = QtCore.pyqtSignal()
+    def setTimeout(self, function, delay):
+        QtCore.QTimer.singleShot(delay, function)
 
-    def __init__(self, w):
-        super().__init__(w)
-        self.__window = w
+    def setTimeout_async(self, function, delay):
+        self.setTimeout(function, delay)
 
-        self.__window.treeView.doubleClicked.connect(self.onDoubleClicked)
+    def scoreSelector(self, location, scope):
+        return 100
 
-    def tabChngd(self, index):
-        if index > -1:
-            self.__window.setWindowTitle(
-                f"{os.path.normpath(self.__window.api.Tab.getTabFile(index) or 'Untitled')} - {self.__window.appName}")
-            if index >= 0: self.__window.encodingLabel.setText(self.__window.tabWidget.widget(index).encoding)
-            self.updateEncoding()
+    def version(self):
+        return "4.0"
+
+    def platform(self):
+        return sys.platform
+
+    def arch(self):
+        if sys.maxsize > 2**32:
+            if platform.system() == "Windows":
+                return "x64"
+            else:
+                return "amd64"
         else:
-            self.__window.setWindowTitle(self.__window.appName)
-        self.tabChanged.emit()
+            return "x86"
 
-    def updateEncoding(self):
-        e = self.__window.api.Tab.getTabEncoding(self.__window.api.Tab.currentTabIndex())
-        self.__window.encodingLabel.setText(e)
+    def packagesPath(self):
+        return "/"
 
-    def onDoubleClicked(self, index):
-        self.treeWidgetDoubleClicked.emit(index)
+    def installed_packagesPath(self):
+        return "/path/to/installed/packages"
 
-    def onClicked(self, index):
-        self.treeWidgetClicked.emit(index)
+class ConsoleWidget(VtAPI.Widgets.DockWidget):
+    def __init__(self, api):
+        super().__init__()
+        self.api = api
+        self.setWindowTitle(self.api.appName+" - Console")
+        self.setFeatures(QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetClosable | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable)
+        self.setAllowedAreas(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea)
+        self.consoleWidget = QtWidgets.QWidget()
+        self.consoleWidget.setObjectName("consoleWidget")
+        self.verticalLayout = QtWidgets.QVBoxLayout(self.consoleWidget)
+        self.verticalLayout.setObjectName("verticalLayout")
+        self.textEdit = QtWidgets.QTextEdit(parent=self.consoleWidget)
+        self.textEdit.setReadOnly(True)
+        self.textEdit.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
+        self.textEdit.setObjectName("consoleOutput")
+        self.verticalLayout.addWidget(self.textEdit)
+        self.lineEdit = QtWidgets.QLineEdit(parent=self.consoleWidget)
+        self.lineEdit.setMouseTracking(False)
+        self.lineEdit.setLayoutDirection(QtCore.Qt.LayoutDirection.LeftToRight)
+        self.lineEdit.setCursorMoveStyle(QtCore.Qt.CursorMoveStyle.LogicalMoveStyle)
+        self.lineEdit.setObjectName("consoleCommandLine")
+        self.verticalLayout.addWidget(self.lineEdit)
+        self.setWidget(self.consoleWidget)
+        self.lineEdit.returnPressed.connect(self.sendCommand)
+    def sendCommand(self):
+        text = self.lineEdit.text()
+        if text:
+            if text.startswith("vtapi"):
+                if len(text.split(".")) == 2:
+                    apiCommand = text.split(".")[-1] 
+                    if hasattr(self.window.api, apiCommand):
+                        self.api.activeWindow.setLogMsg(str(getattr(self.window.api, apiCommand)()))
+                self.api.activeWindow.setLogMsg(str(self.window.api))
+                self.lineEdit.clear()
+            else:
+                self.api.activeWindow.runCommand({"command": self.lineEdit.text()})
+                self.lineEdit.clear()
+    def closeEvent(self, e):
+        self.api.activeWindow.runCommand({"command": "LogConsoleCommand"})
+        e.ignore()
 
-    def onActivated(self):
-        self.treeWidgetActivated.emit()
-
-class VtAPI:
-    def __init__(self, parent):
-        self.__window = parent
-        self.__version__ = self.__window.__version__
-        self.Tab = Tab(self.__window)
-        self.Text = Text(self.__window)
-        self.SigSlots = SigSlots(self.__window)
-        self.App = App(self.__window)
-        self.FSys = FSys(self.__window)
-
-    def __str__(self):
-        return f"""\n------------------------------VtAPI--version--{str(self.__version__)}------------------------------\nDocumentation:https://wtfidklol.com"""
-
-    def loadThemes(self, menu):
-        themeMenu = self.__window.pl.findMenu(menu, "themes")
-        if themeMenu:
-            themes = []
-            for theme in os.listdir(self.__window.themesDir):
-                if os.path.isfile(os.path.join(self.__window.themesDir, theme)):
-                    themes.append({"caption": theme, "command": {"command": f"setTheme", "kwargs": {"theme": theme}}})
-            self.App.updateMenu("themes", themes)
-
-    def getCommand(self, name):
-        return self.__window.pl.regCommands.get(name)
+class LogConsoleCommand(VtAPI.Plugin.WindowCommand):
+    def run(self, checked=None):
+        if not self.api.activeWindow.isDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea):
+            self.console = ConsoleWidget(self.api)
+            self.console.textEdit.append(self.window.getLog())
+            self.window.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.console)
+        else:
+            self.console = self.window.isDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea)
+            self.console.deleteLater()

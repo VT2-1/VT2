@@ -6,7 +6,6 @@ import msgpack, io
 
 from addit import *
 from api2 import PluginManager, VtAPI
-from test import MyAPI
 
 class Logger:
     def __init__(self, window):
@@ -30,7 +29,7 @@ class Logger:
 
     def write(self, message):
         if message:
-            self.__window.api.App.setLogMsg(f"stdout: {message}")
+            self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
             self._stdout_backup.write(message)
 
     def flush(self):
@@ -58,7 +57,6 @@ class Ui_MainWindow(object):
 
         self.console = None
 
-        self.logger = Logger(self.MainWindow)
         self.translator = QtCore.QTranslator()
 
         self.centralwidget = QtWidgets.QWidget(parent=self.MainWindow)
@@ -95,8 +93,8 @@ class Ui_MainWindow(object):
         self.statusbar.addPermanentWidget(self.encodingLabel)
         self.MainWindow.setStatusBar(self.statusbar)
 
-        self.api = VtAPI(self.MainWindow)
-        self.testApi = MyAPI()
+        self.api = VtAPI()
+        self.logger = Logger(self.MainWindow)
         self.logger.log = "VarTexter window loading..."
 
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
@@ -130,17 +128,17 @@ class Ui_MainWindow(object):
 
         self.tabWidget.addTab(self.tab, "")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), name or "Untitled")
-        self.api.Tab.setTab(-1)
+        self.api.activeWindow.setTab(-1)
 
-        new_view = MyAPI.View(self.testApi, self, qwclass=self.tab)
-        self.testApi.activeWindow.views.append(new_view)
-        self.testApi.activeWindow.activeView = new_view
+        new_view = self.api.View(self.api, self, qwclass=self.tab)
+        self.api.activeWindow.views.append(new_view)
+        self.api.activeWindow.activeView = new_view
 
-        self.api.SigSlots.tabCreated.emit()
+        self.api.activeWindow.signals.tabCreated.emit()
 
     def closeTab(self, i: int = None):
         if not i:
-            i = self.api.Tab.currentTabIndex()
+            i = self.api.activeWindow.activeView.currentTabIndex()
         self.tabWidget.closeTab(i)
 
     def defineLocale(self):
@@ -230,7 +228,7 @@ class Ui_MainWindow(object):
                     else:
                         if self.locale == "auto":
                             self.locale = self.defineLocale()
-                    self.api.App.setTheme(self.themeFile)  
+                    self.api.activeWindow.setTheme(self.themeFile)  
         except ValueError:
             self.logger.log += f"\nFailed to restore window state. No file found at {stateFile}"  
 
@@ -238,23 +236,23 @@ class Ui_MainWindow(object):
         for tab in self.tabLog.get("tabs") or []:
             tab = self.tabLog.get("tabs").get(tab)
             self.addTab(name=tab.get("name"), text=tab.get("text"), file=tab.get("file"), canSave=tab.get("canSave"))
-            self.api.Tab.setTabSaved(self.api.Tab.currentTabIndex(), tab.get("saved"))
-            self.MainWindow.setWindowTitle(f"{self.MainWindow.tabWidget.tabText(self.api.Tab.currentTabIndex())} - VarTexter2")
-            self.api.Text.setTextSelection(self.api.Tab.currentTabIndex(), tab.get("selection")[0], tab.get("selection")[1])
+            self.api.activeWindow.activeView.setSaved(tab.get("saved"))
+            self.MainWindow.setWindowTitle(f"{self.api.activeWindow.activeView.getTitle()} - VarTexter2")
+            self.api.activeWindow.activeView.setTextSelection(tab.get("selection")[0], tab.get("selection")[1])
         if self.tabLog.get("activeTab"):
             self.tabWidget.setCurrentIndex(int(self.tabLog.get("activeTab")))
         if self.tabLog.get("splitterState"): self.treeSplitter.restoreState(self.tabLog.get("splitterState"))
 
     def closeEvent(self, e: QtCore.QEvent):
         self.saveWState()
-        self.api.SigSlots.windowClosed.emit()
+        self.api.activeWindow.signals.windowClosed.emit()
 
         e.accept()
 
     def saveWState(self):
         tabsInfo = {}
         tabs = tabsInfo["tabs"] = {}
-        i = self.api.Tab.currentTabIndex()
+        i = self.api.activeWindow.activeView.tabIndex()
         tabsInfo["themeFile"] = self.themeFile
         tabsInfo["locale"] = self.locale
         tabsInfo["activeTab"] = str(i)
@@ -263,15 +261,15 @@ class Ui_MainWindow(object):
         for idx in range(self.tabWidget.count()):
             widget = self.tabWidget.widget(idx)
             if widget and isinstance(widget, QtWidgets.QWidget):
-                cursor = self.api.Text.getTextCursor(i)
+                cursor = self.api.activeWindow.activeView.getTextCursor()
                 start = cursor.selectionStart()
                 end = cursor.selectionEnd()
                 tabs[str(idx)] = {
-                    "name": self.api.Tab.getTabTitle(idx),
-                    "file": self.api.Tab.getTabFile(idx),
-                    "canSave": self.api.Tab.getTabCanSave(idx),
-                    "text": self.api.Tab.getTabText(idx),
-                    "saved": self.api.Tab.getTabSaved(idx),
+                    "name": self.api.activeWindow.activeView.getTitle(),
+                    "file": self.api.activeWindow.activeView.getFile(),
+                    "canSave": self.api.activeWindow.activeView.getCanSave(),
+                    "text": self.api.activeWindow.activeView.getText(),
+                    "saved": self.api.activeWindow.activeView.getSaved(),
                     "selection": [start, end],
                     "modified": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
@@ -286,23 +284,23 @@ class Ui_MainWindow(object):
         self.settFile.close()
 
     def undo(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.Tab.currentTabIndex())
+        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
         tab.textEdit.undo()
 
     def redo(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.Tab.currentTabIndex())
+        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
         tab.textEdit.redo()
 
     def cut(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.Tab.currentTabIndex())
+        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
         tab.textEdit.cut()
 
     def copy(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.Tab.currentTabIndex())
+        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
         tab.textEdit.copy()
 
     def paste(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.Tab.currentTabIndex())
+        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
         tab.textEdit.paste()
 
 
@@ -322,7 +320,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
 
         self.setupUi(self, self.argvParse())
-        self.testApi.activeWindow = self.testApi.Window(self.testApi, qmwclass=self)
+        self.api.activeWindow = self.api.Window(self.api, qmwclass=self)
         self.windowInitialize()
 
         self.pl = PluginManager(self.pluginsDir, self)
@@ -334,11 +332,14 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.pl.registerCommand({"command": "addTab"})
         self.pl.registerCommand({"command": "showPackages"})
 
+        # self.pl.registerCommand({"command": LogConsoleCommand, "shortcut": "shift+esc"})
+        # self.pl.registerCommand({"keys": [], "command": {"command": "LogConsoleCommand"}})
+
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
         if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
 
-        self.pl.load_plugins()
-        self.api.loadThemes(self.menuBar())
+        # self.pl.load_plugins()
+        self.api.activeWindow.loadThemes(self.menuBar())
         self.pl.registerCommands()
 
         if self.hotKeysFile and os.path.isfile(self.hotKeysFile): self.pl.registerShortcuts(json.load(open(self.hotKeysFile, "r+")))
@@ -347,9 +348,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.restoreWState()
 
-        self.api.App.setTreeWidgetDir("/")
+        # self.api.App.setTreeWidgetDir("/")
 
-        openFileCommand = self.api.getCommand("openFile")
+        openFileCommand = self.api.activeWindow.getCommand("openFile")
         if openFileCommand:
             openFileCommand.get("command")([sys.argv[1]] if len(sys.argv) > 1 else [], used=False)
 
@@ -366,10 +367,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
+    app.applicationName = w.appName
     w.show()
-    print(w.testApi.activeWindow.activeView.getTitle())
-    # print(w.testApi.active_window.active_view.insert(w.testApi.Point(0, 0), "djelkjl"))
-    # print(w.testApi.active_window.active_view.replace(w.testApi.Region(0, 3), "djelkjl"))
     sys.exit(app.exec())
 
 if __name__ == "__main__":

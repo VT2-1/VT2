@@ -2,7 +2,7 @@ import sys, os, importlib
 from PyQt6 import QtWidgets, QtCore, QtGui
 import platform
 
-class MyAPI:
+class VtAPI:
     def __init__(self):
         self.app = QtWidgets.QApplication.instance()
         print(self.app)
@@ -87,6 +87,11 @@ class MyAPI:
             if menu:
                 self.__mw.pl.clearMenu(self.__mw.menuBar(), menu)
                 self.__mw.pl.parseMenu(data, menuClass)
+        
+        def addDockWidget(self, dock: 'VtAPI.Widgets.DockWidget'):
+            self.__mw.addDockWidget(0x1, dock)
+            dock.setParent(None)
+            dock.setWindow(None)
 
     class View:
         def __init__(self, api, window, qwclass=None, text="", syntaxFile=None, file_name=None, read_only=False):
@@ -351,6 +356,18 @@ class MyAPI:
                 caption="VarTexter - Get directory",
             )
             return str(dlg)
+
+    class Widgets:
+        class DockWidget(QtWidgets.QDockWidget):
+            def __init__(self, title, parent=None):
+                super().__init__(title, parent)
+                self.__window = None
+
+            def parent(self):
+                return None
+
+            def window(self):
+                return None
 
     class Plugin:
         class TextCommand:

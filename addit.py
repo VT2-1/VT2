@@ -6,47 +6,6 @@ from PyQt6.QtWidgets import QCompleter
 from PyQt6.QtCore import QStringListModel, Qt
 from PyQt6.QtGui import QTextCursor
 
-class ConsoleWidget(QtWidgets.QDockWidget):
-    def __init__(self, window):
-        super().__init__()
-        self.window = window
-        self.setWindowTitle(self.window.appName+" - Console")
-        self.setFeatures(QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetClosable | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable)
-        self.setAllowedAreas(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea)
-        self.consoleWidget = QtWidgets.QWidget()
-        self.consoleWidget.setObjectName("consoleWidget")
-        self.verticalLayout = QtWidgets.QVBoxLayout(self.consoleWidget)
-        self.verticalLayout.setObjectName("verticalLayout")
-        self.textEdit = QtWidgets.QTextEdit(parent=self.consoleWidget)
-        self.textEdit.setReadOnly(True)
-        self.textEdit.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
-        self.textEdit.setObjectName("consoleOutput")
-        self.verticalLayout.addWidget(self.textEdit)
-        self.lineEdit = QtWidgets.QLineEdit(parent=self.consoleWidget)
-        self.lineEdit.setMouseTracking(False)
-        self.lineEdit.setLayoutDirection(QtCore.Qt.LayoutDirection.LeftToRight)
-        self.lineEdit.setCursorMoveStyle(QtCore.Qt.CursorMoveStyle.LogicalMoveStyle)
-        self.lineEdit.setObjectName("consoleCommandLine")
-        self.verticalLayout.addWidget(self.lineEdit)
-        self.setWidget(self.consoleWidget)
-        self.lineEdit.returnPressed.connect(self.sendCommand)
-    def sendCommand(self):
-        text = self.lineEdit.text()
-        if text:
-            if text.startswith("vtapi"):
-                if len(text.split(".")) == 2:
-                    apiCommand = text.split(".")[-1] 
-                    if hasattr(self.window.api, apiCommand):
-                        self.window.logger.log += str(getattr(self.window.api, apiCommand)())
-                self.window.logger.log += str(self.window.api)
-                self.lineEdit.clear()
-            else:
-                self.window.pl.executeCommand({"command": self.lineEdit.text()})
-                self.lineEdit.clear()
-    def closeEvent(self, e):
-        self.window.pl.executeCommand({"command": "logConsole"})
-        e.ignore()
-
 class MiniMap(QtWidgets.QTextEdit):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -286,7 +245,7 @@ class TextEdit(QtWidgets.QTextEdit):
     def safeSetText(self, text):
         self.change_event = True
         self.setText(text)
-        self.mw.api.SigSlots.textChanged.emit()
+        self.mw.api.activeWindow.signals.textChanged.emit()
         self.highLighter.rehighlight()
         self.change_event = False
 
