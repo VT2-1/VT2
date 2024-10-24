@@ -133,8 +133,8 @@ class Ui_MainWindow(object):
         self.api.Tab.setTab(-1)
 
         new_view = MyAPI.View(self.testApi, self, qwclass=self.tab)
-        self.testApi.active_window.views.append(new_view)
-        self.testApi.active_window.active_view = new_view
+        self.testApi.activeWindow.views.append(new_view)
+        self.testApi.activeWindow.activeView = new_view
 
         self.api.SigSlots.tabCreated.emit()
 
@@ -150,9 +150,6 @@ class Ui_MainWindow(object):
         if os.path.isdir(d) and os.path.isfile(os.path.join(d, f"{self.locale}.vt-locale")):
             if self.translator.load(os.path.join(d, f"{self.locale}.vt-locale")):
                 QtCore.QCoreApplication.installTranslator(self.translator)
-
-    def translateStr(self, s):
-        return self.tr(s)
 
     def showPackages(self):
         self.pl.pm.updateRepos()
@@ -206,7 +203,6 @@ class Ui_MainWindow(object):
                 minimap.show()
             else:
                 minimap.hide()
-
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -326,7 +322,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
 
         self.setupUi(self, self.argvParse())
-        self.testApi.active_window = self.testApi.Window(self.testApi, qmwclass=self)
+        self.testApi.activeWindow = self.testApi.Window(self.testApi, qmwclass=self)
         self.windowInitialize()
 
         self.pl = PluginManager(self.pluginsDir, self)
@@ -371,6 +367,7 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
     w.show()
+    print(w.testApi.activeWindow.activeView.getTitle())
     # print(w.testApi.active_window.active_view.insert(w.testApi.Point(0, 0), "djelkjl"))
     # print(w.testApi.active_window.active_view.replace(w.testApi.Region(0, 3), "djelkjl"))
     sys.exit(app.exec())
