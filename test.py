@@ -1,45 +1,22 @@
-from PyQt6.QtWidgets import QApplication, QTextEdit
-from PyQt6.QtGui import QKeySequence, QKeyEvent
-from PyQt6.QtCore import Qt
+class View:
+    def __init__(self, api, parent, qwclass):
+        self.api = api
+        self.parent = parent
+        self.qwclass = qwclass  # Предположим, что qwclass является уникальным идентификатором
 
-class CustomTextEdit(QTextEdit):
-    def __init__(self):
-        super().__init__()
+    def __eq__(self, other):
+        if not isinstance(other, View):
+            return NotImplemented
+        # Сравниваем необходимые атрибуты
+        return (self.qwclass == other.qwclass)
 
-    def keyPressEvent(self, event: QKeyEvent):
-        # Проверяем хоткеи и выполняем свои действия
-        if event.matches(QKeySequence.StandardKey.Copy):
-            self.custom_copy()
-        elif event.matches(QKeySequence.StandardKey.Paste):
-            self.custom_paste()
-        elif event.matches(QKeySequence.StandardKey.Cut):
-            self.custom_cut()
-        elif event.matches(QKeySequence.StandardKey.Undo):
-            self.custom_undo()
-        elif event.matches(QKeySequence.StandardKey.Redo):
-            self.custom_redo()
-        else:
-            # Если комбинация не совпала, обрабатываем событие стандартным образом
-            super().keyPressEvent(event)
+    def __hash__(self):
+        # Важно переопределить __hash__, если вы переопределяете __eq__
+        return hash((self.api, self.parent, self.qwclass))
 
-    # Свои методы для действий
-    def custom_copy(self):
-        print("Custom Copy Action Triggered")
+# Пример использования
+view = View("api", "self", qwclass="self.tab")
 
-    def custom_paste(self):
-        print("Custom Paste Action Triggered")
-
-    def custom_cut(self):
-        print("Custom Cut Action Triggered")
-
-    def custom_undo(self):
-        print("Custom Undo Action Triggered")
-
-    def custom_redo(self):
-        print("Custom Redo Action Triggered")
-
-app = QApplication([])
-text_edit = CustomTextEdit()
-text_edit.setPlainText("Попробуйте скопировать, вставить или отменить изменения")
-text_edit.show()
-app.exec()
+for v in [View("api", "self", qwclass="self.tab")]:
+    if v == view:
+        print("YEEEEEEEAH")

@@ -269,25 +269,19 @@ class TextEdit(QtWidgets.QTextEdit):
 
     def keyPressEvent(self, event):
         tc = self.textCursor()
-        if event.matches(QtGui.QKeySequence.StandardKey.Copy): self.mw.pl.findActionShortcut("ctrl+c").trigger()
-        elif event.matches(QtGui.QKeySequence.StandardKey.Paste): self.mw.pl.findActionShortcut("ctrl+v").trigger()
-        elif event.matches(QtGui.QKeySequence.StandardKey.Cut): self.mw.pl.findActionShortcut("ctrl+x").trigger()
-        elif event.matches(QtGui.QKeySequence.StandardKey.Undo): self.mw.pl.findActionShortcut("ctrl+z").trigger()
-        elif event.matches(QtGui.QKeySequence.StandardKey.Redo): self.mw.pl.findActionShortcut("ctrl+shift+z").trigger()
         if event.key() in {
             Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
             Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt
         } or event.modifiers() in {Qt.KeyboardModifier.ControlModifier, Qt.KeyboardModifier.ShiftModifier}:
-            QtWidgets.QTextEdit.keyPressEvent(self, event)
+            self.mw.keyPressEvent(event)
             return
+        else:
+            QtWidgets.QTextEdit.keyPressEvent(self, event)
         self.mw.api.activeWindow.activeView.setSaved(False)
         if event.key() == Qt.Key.Key_Tab and self.completer.popup().isVisible():
             self.completer.insertText.emit(self.completer.getSelected())
             self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
             return
-
-        QtWidgets.QTextEdit.keyPressEvent(self, event)
-
         self.completer.updateModel(self.toPlainText())
 
         tc.select(QTextCursor.SelectionType.WordUnderCursor)

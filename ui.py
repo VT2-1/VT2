@@ -1,4 +1,4 @@
-import sys, json, os
+import sys, json, os, uuid
 
 from PyQt6 import QtCore, QtWidgets
 from datetime import datetime
@@ -97,15 +97,14 @@ class Ui_MainWindow(object):
 
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
 
-    def addTab(self, name: str = "", text: str = "", i: int = -1, file=None, canSave=True, canEdit=True,
-               encoding="UTF-8"):
+    def addTab(self, name: str = "", text: str = "", i: int = -1, file=None, canSave=True, canEdit=True, encoding="UTF-8"):
         self.tab = QtWidgets.QWidget()
         self.tab.file = file
         self.tab.canSave = canSave
         self.tab.canEdit = canEdit
         self.tabWidget.tabBar().setTabSaved(self.tab, True)
         self.tab.encoding = encoding
-        self.tab.setObjectName("tab")
+        self.tab.setObjectName(f"tab-{uuid.uuid4()}")
 
         self.verticalLayout = QtWidgets.QVBoxLayout(self.tab)
         self.verticalLayout.setObjectName("verticalLayout")
@@ -321,10 +320,47 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def argvParse(self):
         return sys.argv
 
+    def keyPressEvent(self, event):
+        key_code = event.key()
+        modifiers = event.modifiers()
+
+        key_text = event.text()
+        if key_text == '':
+            return
+
+        modifier_string = ""
+        if modifiers & Qt.KeyboardModifier.ControlModifier:
+            modifier_string += "Ctrl+"
+        if modifiers & Qt.KeyboardModifier.ShiftModifier:
+            modifier_string += "Shift+"
+        if modifiers & Qt.KeyboardModifier.AltModifier:
+            modifier_string += "Alt+"
+
+        if key_code in range(Qt.Key.Key_A, Qt.Key.Key_Z + 1):
+            key_text = chr(ord('A') + key_code - Qt.Key.Key_A)
+        elif key_code in range(Qt.Key.Key_0, Qt.Key.Key_9 + 1):
+            key_text = chr(ord('0') + key_code - Qt.Key.Key_0)
+        elif key_code == Qt.Key.Key_Space:
+            key_text = "Space"
+        elif key_code == Qt.Key.Key_Return:
+            key_text = "Return"
+        elif key_code == Qt.Key.Key_Escape:
+            key_text = "Esc"
+        elif key_code == Qt.Key.Key_Backspace:
+            key_text = "Backspace"
+        elif key_code == Qt.Key.Key_Tab:
+            key_text = "Tab"
+        
+        action = self.pl.findActionShortcut(modifier_string + key_text)
+        if action:
+            print(action)
+            action.trigger()
+
 def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
     app.applicationName = w.appName
+    print(w.api.windows)
     w.show()
     sys.exit(app.exec())
 

@@ -472,6 +472,7 @@ class VtAPI:
             self.__api = api
             self.window = window
             self.__tab = qwclass
+            self.id = self.__tab.objectName().split("-")[-1]
             self.__tabWidget = self.__tab.parentWidget().parentWidget()
             self.text = text
             self.syntaxFile = syntaxFile
@@ -479,7 +480,15 @@ class VtAPI:
             self.read_only = read_only
             self.tab_title = None
             self.tab_encoding = None
-        
+
+        def __eq__(self, other):
+            if not isinstance(other, VtAPI.View):
+                return NotImplemented
+            return self.id == other.id
+
+        def __hash__(self):
+            return hash(self.tabIndex())
+
         def tabIndex(self):
             return self.__tabWidget.currentIndex()
 
@@ -585,6 +594,9 @@ class VtAPI:
 
         def paste(self):
             self.__tab.textEdit.paste()
+
+        def selectAll(self):
+            self.__tab.textEdit.selectAll()
 
         def find(self, pattern, start_point, flags=0):
             pass
@@ -845,19 +857,28 @@ class VtAPI:
             self.__window = w
 
             self.__window.treeView.doubleClicked.connect(self.onDoubleClicked)
+            self.__window.tabWidget.currentChanged.connect(self.tabChngd)
 
         def tabChngd(self, index):
-            if index > -1:
+            if index > -1 and self.__window.api.activeWindow.activeView:
                 self.__window.setWindowTitle(
-                    f"{os.path.normpath(self.__window.api.Tab.getTabFile(index) or 'Untitled')} - {self.__window.appName}")
-                if index >= 0: self.__window.encodingLabel.setText(self.__window.tabWidget.widget(index).encoding)
+                    f"{os.path.normpath(self.__window.api.activeWindow.activeView.getFile() or 'Untitled')} - {self.__window.appName}")
+                if index >= 0: self.__window.encodingLabel.setText(self.__window.api.activeWindow.activeView.getEncoding())
                 self.updateEncoding()
             else:
                 self.__window.setWindowTitle(self.__window.appName)
+
+            view = self.__window.api.View(self.__window.api, self.__window, qwclass=self.__window.tabWidget.currentWidget())
+            view.id = self.__window.tabWidget.currentWidget().objectName().split("-")[-1]
+            for v in self.__window.api.activeWindow.views:
+                if v == view:
+                    self.__window.api.activeWindow.activeView = v
+                    print(v)
+                    break
             self.tabChanged.emit()
 
         def updateEncoding(self):
-            e = self.__window.api.Tab.getTabEncoding(self.__window.api.Tab.currentTabIndex())
+            e = self.__window.api.activeWindow.activeView.getEncoding()
             self.__window.encodingLabel.setText(e)
 
         def onDoubleClicked(self, index):
@@ -1037,6 +1058,9 @@ class NewTabCommand(VtAPI.Plugin.WindowCommand):
     def run(self):
         self.window.newFile()
 
+class SelectAllCommand(VtAPI.Plugin.TextCommand):
+    def run(self):
+        self.view.selectAll()
 class CopyCommand(VtAPI.Plugin.TextCommand):
     def run(self):
         print("Heellooooo")
