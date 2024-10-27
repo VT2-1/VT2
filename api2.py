@@ -36,13 +36,6 @@ class BlockedQApplication:
     def __init__(self, *args, **kwargs):
         raise ImportError("Access to QApplication is not allowed.")
 
-def importModule(path, n):
-    spec = importlib.util.spec_from_file_location(n, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[n] = module
-    spec.loader.exec_module(module)
-    return module
-
 class PluginManager:
     def __init__(self, plugin_directory: str, w):
         self.plugin_directory = plugin_directory
@@ -53,6 +46,14 @@ class PluginManager:
         self.shortcuts = []
         self.regCommands = {}
         self.dPath = None
+
+    def importModule(self, path, n):
+        spec = importlib.util.spec_from_file_location(n, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[n] = module
+        spec.loader.exec_module(module)
+        module.initAPI(self.__window.api)
+        return module
 
     def load_plugins(self):
         try:
@@ -68,20 +69,20 @@ class PluginManager:
                         pyFile = self.mainFile
                         try:
                             with SafeImporter(BLOCKED):
-                                # sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
-                                # sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
+                                sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
+                                sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
                                 sys.path.insert(0, fullPath)
-                                module = importModule(pyFile, self.name + "Plugin")
-                                if hasattr(module, "initAPI"):
+                                self.module = self.importModule(pyFile, self.name + "Plugin")
+                                if hasattr(self.module, "initAPI"):
                                     module.initAPI(self.__window.api)
-                                    self.newRegCommands(module)
-                                # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
+
+                                sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                         except Exception as e:
                             self.__window.api.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
                         finally:
                             sys.path.pop(0)
                     if self.menuFile:
-                        self.loadMenu(self.menuFile, module)
+                        self.loadMenu(self.menuFile, module=self.module)
                     if self.scFile:
                         try:
                             self.registerShortcuts(json.load(open(self.scFile, "r+")))
@@ -99,11 +100,11 @@ class PluginManager:
             if os.path.isdir(localeDir): self.__window.translate(localeDir)
             for menu in menuFile:
                 if menu == "menuBar" or menu == "mainMenu":
-                    self.parseMenu(menuFile.get(menu), self.__window.menuBar(), module, "MainMenu")
+                    self.parseMenu(menuFile.get(menu), self.__window.menuBar(), pl=module, localemenu="MainMenu")
                 elif menu == "textContextMenu":
-                    self.parseMenu(menuFile.get(menu), self.__window.textContextMenu, module, "TextContextMenu")
+                    self.parseMenu(menuFile.get(menu), self.__window.textContextMenu, pl=module, localemenu="TextContextMenu")
                 elif menu == "tabBarContextMenu":
-                    self.parseMenu(menuFile.get(menu), self.__window.tabBarContextMenu, module, "TabBarContextMenu")
+                    self.parseMenu(menuFile.get(menu), self.__window.tabBarContextMenu, pl=module, localemenu="TabBarContextMenu")
         except Exception as e:
             self.__window.api.activeWindow.setLogMsg(f"Failed load menu from '{f}': {e}")
 
@@ -131,18 +132,20 @@ class PluginManager:
                     if 'children' in item:
                         self.parseMenu(item['children'], fmenu, pl)
                 else:
-                    menu = self.__menu_map.setdefault(menu_id, QtWidgets.QMenu(QtCore.QCoreApplication.translate("MainMenu", item.get('caption', 'Unnamed')), self.__window))
+                    menu = self.__menu_map.setdefault(menu_id, QtWidgets.QMenu(oldCoreApp.translate("MainMenu", item.get('caption', 'Unnamed')), self.__window))
                     menu.setObjectName(item.get('id'))
                     parent.addMenu(menu)
                     if 'children' in item:
                         self.parseMenu(item['children'], menu, pl)
             else:
-                action = QtGui.QAction(QtCore.QCoreApplication.translate(localemenu, item.get('caption', 'Unnamed')), self.__window)
+                action = QtGui.QAction(oldCoreApp.translate(localemenu, item.get('caption', 'Unnamed')), self.__window)
                 if 'shortcut' in item:
                     if not item['shortcut'] in self.shortcuts:
                         action.setShortcut(QtGui.QKeySequence(item['shortcut']))
+                        print(action.text(), item['shortcut'])
                         action.setStatusTip(item['shortcut'])
                         self.shortcuts.append(item['shortcut'])
+                        self.__window.addAction(action)
                     else:
                         self.__window.api.activeWindow.setLogMsg(
                             f"Shortcut '{item['shortcut']}' for function '{item['command']}' is already used.")
@@ -150,25 +153,18 @@ class PluginManager:
                 if 'command' in item:
                     args = item.get('command').get("args")
                     kwargs = item.get('command').get("kwargs")
-                    self.commands.append(
-                        {"action": action, "command": item['command'], "plugin": pl, "args": args, "kwargs": kwargs})
+                    self.commands.append({"action": action, "shortcut": item.get("shortcut"), "command": item['command'], "plugin": pl, "args": args, "kwargs": kwargs})
                     if 'checkable' in item:
                         action.setCheckable(item['checkable'])
                         if 'checked' in item:
                             action.setChecked(item['checked'])
-                    action.triggered.connect(lambda checked, cmd=item['command']:
-                                             self.executeCommand(
-                                                 cmd,
-                                                 checked=checked
-                                             )
-                                             )
+                    action.triggered.connect(lambda checked, cmd=item['command']: self.executeCommand(cmd, checked=checked))
                 parent.addAction(action)
 
     def executeCommand(self, c, *args, **kwargs):
         ckwargs = kwargs
         command = c
         c = self.regCommands.get(command.get("command"))
-        print(c)
         if c:
             try:
                 args = command.get("args")
@@ -197,7 +193,6 @@ class PluginManager:
                     self.__window.api.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'")
             except Exception as e:
                 self.__window.api.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
-                print(e)
         else:
             self.__window.api.activeWindow.setLogMsg(f"Command '{command}' not found")
 
@@ -214,9 +209,7 @@ class PluginManager:
                     action.setStatusTip(key)
                     self.shortcuts.append(key)
 
-                action.triggered.connect(lambda checked, cmd=command:
-                                         self.executeCommand(cmd)
-                                         )
+                action.triggered.connect(lambda checked, cmd=command: self.executeCommand(cmd))
                 self.__window.addAction(action)
                 self.__window.api.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' registered.")
             else:
@@ -275,6 +268,8 @@ class PluginManager:
             command = commandInfo.get("command")
             if type(command) == str:
                 commandN = command
+            elif inspect.isclass(command):
+                commandN = command
             else:
                 commandN = command.get("command")
             pl = commandInfo.get("plugin")
@@ -287,6 +282,7 @@ class PluginManager:
             if pl:
                 try:
                     command_func = getattr(pl, commandN)
+                    print(type(command_func), command_func)
                     self.regCommands[commandN] = {
                         "action": action,
                         "command": command_func,
@@ -327,6 +323,13 @@ class PluginManager:
                     return found_action
 
         return None
+
+    def findActionShortcut(self, shortcut):
+        key_sequence = QtGui.QKeySequence(shortcut)
+        actions = self.__window.actions()
+        for action in actions:
+            if action.shortcut() == key_sequence:
+                return action
 
     def findMenu(self, menubar, menu_id):
         for action in menubar.actions():
@@ -547,14 +550,18 @@ class VtAPI:
         def sel(self):
             pass
 
-        def insert(self, point, string):
-            t = self.__tab.textEdit.toPlainText()
-            lines = self.text.splitlines()
-            line_index = point.x
-            char_index = point.y
-            
-            point = sum(len(lines[i]) + 1 for i in range(line_index)) + char_index
-            self.__tab.textEdit.setPlainText(t[:point] + string + t[point:])
+        def insert(self, string, point=None):
+            textEdit = self.__tab.textEdit
+            cursor = textEdit.textCursor()
+            if point is not None:
+                line_index, char_index = point.x, point.y
+                lines = textEdit.toPlainText().splitlines()
+                abs_position = sum(len(lines[i]) + 1 for i in range(line_index)) + char_index
+                cursor.setPosition(abs_position)
+            else:
+                cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+            cursor.insertText(string)
+            textEdit.setTextCursor(cursor)
         
         def erase(self, region):
             t = self.__tab.textEdit.toPlainText()
@@ -563,6 +570,21 @@ class VtAPI:
         def replace(self, region, string):
             t = self.__tab.textEdit.toPlainText()
             self.__tab.textEdit.setPlainText(t[:region.begin()] + string + t[region.end():])
+
+        def undo(self):
+            self.__tab.textEdit.undo()
+
+        def redo(self):
+            self.__tab.textEdit.redo()
+
+        def cut(self):
+            self.__tab.textEdit.cut()
+
+        def copy(self):
+            self.__tab.textEdit.copy()
+
+        def paste(self):
+            self.__tab.textEdit.paste()
 
         def find(self, pattern, start_point, flags=0):
             pass
@@ -890,7 +912,10 @@ class VtAPI:
         return "4.0"
 
     def platform(self):
-        return sys.platform
+        current_platform = platform.system()
+        if current_platform == "Darwin":
+            return "OSX"
+        return current_platform
 
     def arch(self):
         if sys.maxsize > 2**32:
@@ -900,6 +925,56 @@ class VtAPI:
                 return "amd64"
         else:
             return "x86"
+    
+    def replaceConsts(self, data, constants):
+        stack = [data]
+        result = data
+
+        while stack:
+            current = stack.pop()
+            
+            if isinstance(current, dict):
+                items = list(current.items())
+                for key, value in items:
+                    if isinstance(value, (dict, list)):
+                        stack.append(value)
+                    elif isinstance(value, str):
+                        try:
+                            current[key] = value.format(**constants)
+                        except KeyError as e:
+                            print(f"Missing key in constants: {e}")
+                        except ValueError:
+                            current[key] = value.replace('{', '{{').replace('}', '}}')
+                        
+            elif isinstance(current, list):
+                items = list(current)
+                for i, item in enumerate(items):
+                    if isinstance(item, (dict, list)):
+                        stack.append(item)
+                    elif isinstance(item, str):
+                        try:
+                            current[i] = item.format(**constants)
+                        except KeyError as e:
+                            print(f"Missing key in constants: {e}")
+                        except ValueError:
+                            current[i] = item.replace('{', '{{').replace('}', '}}')
+
+        return result
+
+    def replacePaths(self, data):
+        def replace_var(match):
+            env_var = match.group(1)
+            return os.getenv(env_var, f'%{env_var}%')
+        return re.sub(r'%([^%]+)%', replace_var, data)
+
+    def defineLocale(self):
+        return QtCore.QLocale.system().name().split("_")[0]
+
+    def baseDirPath(self):
+        return ""
+
+    def fileDirPath(self):
+        return ""
 
     def packagesPath(self):
         return "/"
@@ -957,3 +1032,29 @@ class LogConsoleCommand(VtAPI.Plugin.WindowCommand):
         else:
             self.console = self.window.isDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea)
             self.console.deleteLater()
+
+class NewTabCommand(VtAPI.Plugin.WindowCommand):
+    def run(self):
+        self.window.newFile()
+
+class CopyCommand(VtAPI.Plugin.TextCommand):
+    def run(self):
+        print("Heellooooo")
+        self.view.copy()
+
+class PasteCommand(VtAPI.Plugin.TextCommand):
+    def run(self):
+        cb = QtGui.QGuiApplication.clipboard()
+        self.view.insert(cb.text())
+
+class CutCommand(VtAPI.Plugin.TextCommand):
+    def run(self):
+        self.view.cut()
+
+class UndoCommand(VtAPI.Plugin.TextCommand):
+    def run(self):
+        self.view.undo()
+
+class RedoCommand(VtAPI.Plugin.TextCommand):
+    def run(self):
+        self.view.redo()

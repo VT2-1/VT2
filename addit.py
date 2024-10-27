@@ -218,6 +218,7 @@ class TextEdit(QtWidgets.QTextEdit):
         self.mw = mw
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.contextMenu)
+        self.setShortcutEnabled(False)
 
         self.minimap = MiniMap(self)
         self.minimap.setTextEdit(self)
@@ -268,14 +269,18 @@ class TextEdit(QtWidgets.QTextEdit):
 
     def keyPressEvent(self, event):
         tc = self.textCursor()
-
+        if event.matches(QtGui.QKeySequence.StandardKey.Copy): self.mw.pl.findActionShortcut("ctrl+c").trigger()
+        elif event.matches(QtGui.QKeySequence.StandardKey.Paste): self.mw.pl.findActionShortcut("ctrl+v").trigger()
+        elif event.matches(QtGui.QKeySequence.StandardKey.Cut): self.mw.pl.findActionShortcut("ctrl+x").trigger()
+        elif event.matches(QtGui.QKeySequence.StandardKey.Undo): self.mw.pl.findActionShortcut("ctrl+z").trigger()
+        elif event.matches(QtGui.QKeySequence.StandardKey.Redo): self.mw.pl.findActionShortcut("ctrl+shift+z").trigger()
         if event.key() in {
             Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
             Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt
         } or event.modifiers() in {Qt.KeyboardModifier.ControlModifier, Qt.KeyboardModifier.ShiftModifier}:
             QtWidgets.QTextEdit.keyPressEvent(self, event)
             return
-        self.mw.api.Tab.setTabSaved(self.mw.api.Tab.currentTabIndex(), False)
+        self.mw.api.activeWindow.activeView.setSaved(False)
         if event.key() == Qt.Key.Key_Tab and self.completer.popup().isVisible():
             self.completer.insertText.emit(self.completer.getSelected())
             self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
@@ -402,30 +407,27 @@ class TabWidget (QtWidgets.QTabWidget):
                 cancelButton = dlg.button(QtWidgets.QMessageBox.StandardButton.Cancel)
                 cancelButton.setObjectName("tabSaveCancel")
 
-                # yesButton.setStyleSheet("QPushButton { color: white;}")
-                # noButton.setStyleSheet("QPushButton { color: white;}")
-                # cancelButton.setStyleSheet("QPushButton { color: white;}")
                 dlg.setDefaultButton(cancelButton)
                 
-                dlg.setStyleSheet("QtWidgets.QMessageBox { background-color: black; } QLabel { color: white; }")
+                # dlg.setStyleSheet("QtWidgets.QMessageBox { background-color: black; } QLabel { color: white; }")
                 
                 result = dlg.exec()
 
                 if result == QtWidgets.QMessageBox.StandardButton.Yes:
-                    self.MainWindow.api.execute_command(f"saveFile {tab.file}")
+                    self.MainWindow.api.activeWindow.runCommand({"command": "saveFile", "args": tab.file})
                     tab.deleteLater()
                     self.removeTab(currentIndex)
-                    self.MainWindow.api.SigSlots.tabClosed.emit(currentIndex, tab.file)
+                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(currentIndex, tab.file)
                 elif result == QtWidgets.QMessageBox.StandardButton.No:
                     tab.deleteLater()
                     self.removeTab(currentIndex)
-                    self.MainWindow.api.SigSlots.tabClosed.emit(currentIndex, tab.file)
+                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(currentIndex, tab.file)
                 elif result == QtWidgets.QMessageBox.StandardButton.Cancel:
                     pass
             else:
                 tab.deleteLater()
                 self.removeTab(currentIndex)
-                self.MainWindow.api.SigSlots.tabClosed.emit(currentIndex, tab.file)
+                self.MainWindow.api.activeWindow.signals.tabClosed.emit(currentIndex, tab.file)
 
 class PackageManager(QtWidgets.QDialog):
     def __init__(self, window, packagesDir):
@@ -565,7 +567,7 @@ class PackageManager(QtWidgets.QDialog):
                 try:
                     data = json.load(f)
                     if all(k in data for k in ("apiVersion", "repo", "name")):
-                        if "platform" in data and StaticInfo.get_platform() not in data["platform"]:
+                        if "platform" in data and self.window.api.platform() not in data["platform"]:
                             continue
                         if "requirements" in data:
                             try: self.checkReqs(data["requirements"])
@@ -575,7 +577,7 @@ class PackageManager(QtWidgets.QDialog):
                             except: pass
                         self.addCard(self.scrollAreaLayout, self.scrollAreaWidgetContents, data["repo"], name=data["name"])            
                 except Exception as e:
-                    self.window.api.App.setLogMsg(f"Error processing plugin {pl}: {e}")
+                    self.window.api.activeWindow.setLogMsg(f"Error processing plugin {pl}: {e}")
 
     def processThemes(self):
         themes_dir = os.path.join(self.window.cacheDir, "themes")
@@ -586,66 +588,4 @@ class PackageManager(QtWidgets.QDialog):
                     if all(k in data for k in ("repo", "name")): 
                         self.addCard(self.scrollAreaLayout2, self.scrollAreaWidgetContents2, data["repo"], name=data["name"])            
                 except Exception as e:
-                    self.window.api.App.setLogMsg(f"Error processing theme {th}: {e}")        
-
-class StaticInfo:
-    @staticmethod
-    def get_platform():
-        current_platform = platform.system()
-        if current_platform == "Darwin":
-            return "OSX"
-        return current_platform
-    
-    @staticmethod
-    def get_basedir():
-        return os.path.dirname(os.path.abspath(__file__))
-    
-    @staticmethod
-    def get_filedir(filepath):
-        return os.path.dirname(os.path.abspath(filepath))
-    
-    @staticmethod
-    def defineLocale():
-        return QtCore.QLocale.system().name().split("_")[0]
-
-    @staticmethod
-    def replace_consts(data, constants):
-        stack = [data]
-        result = data
-
-        while stack:
-            current = stack.pop()
-            
-            if isinstance(current, dict):
-                items = list(current.items())
-                for key, value in items:
-                    if isinstance(value, (dict, list)):
-                        stack.append(value)
-                    elif isinstance(value, str):
-                        try:
-                            current[key] = value.format(**constants)
-                        except KeyError as e:
-                            print(f"Missing key in constants: {e}")
-                        except ValueError:
-                            current[key] = value.replace('{', '{{').replace('}', '}}')
-                        
-            elif isinstance(current, list):
-                items = list(current)
-                for i, item in enumerate(items):
-                    if isinstance(item, (dict, list)):
-                        stack.append(item)
-                    elif isinstance(item, str):
-                        try:
-                            current[i] = item.format(**constants)
-                        except KeyError as e:
-                            print(f"Missing key in constants: {e}")
-                        except ValueError:
-                            current[i] = item.replace('{', '{{').replace('}', '}}')
-
-        return result
-    @staticmethod
-    def replacePaths(data):
-        def replace_var(match):
-            env_var = match.group(1)
-            return os.getenv(env_var, f'%{env_var}%')
-        return re.sub(r'%([^%]+)%', replace_var, data)
+                    self.window.api.App.setLogMsg(f"Error processing theme {th}: {e}")

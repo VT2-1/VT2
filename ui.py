@@ -49,10 +49,7 @@ class Ui_MainWindow(object):
         self.themeFile = ""
         self.localeDirs = []
 
-        self.settings()
-
         self.MainWindow.setObjectName("MainWindow")
-        self.MainWindow.setWindowTitle(self.MainWindow.appName)
         self.MainWindow.resize(800, 600)
 
         self.console = None
@@ -94,6 +91,7 @@ class Ui_MainWindow(object):
         self.MainWindow.setStatusBar(self.statusbar)
 
         self.api = VtAPI()
+        self.settings()
         self.logger = Logger(self.MainWindow)
         self.logger.log = "VarTexter window loading..."
 
@@ -153,35 +151,26 @@ class Ui_MainWindow(object):
         self.pl.pm.updateRepos()
         self.pl.pm.exec()
 
-    def logConsole(self, checked=None):
-        if not self.console:
-            self.console = ConsoleWidget(self.MainWindow)
-            self.console.textEdit.append(self.logger.log)
-            self.MainWindow.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.console)
-        else:
-            self.console.deleteLater()
-            self.console = None
-
     def settings(self):
         self.settFile = open(os.path.join(self.appPath, 'ui/Main.settings'), 'r+', encoding='utf-8')
         self.settData = json.load(self.settFile)
         self.packageDirs = self.settData.get("packageDirs")
         if self.packageDirs:
-            self.packageDirs = StaticInfo.replacePaths(self.packageDirs.get(StaticInfo.get_platform()))
+            self.packageDirs = self.api.replacePaths(self.packageDirs.get(self.api.platform()))
             if not os.path.isdir(self.packageDirs): os.makedirs(self.packageDirs)
-            self.themesDir = StaticInfo.replacePaths(os.path.join(self.packageDirs, "Themes"))
+            self.themesDir = self.api.replacePaths(os.path.join(self.packageDirs, "Themes"))
             if not os.path.isdir(self.themesDir): os.makedirs(self.themesDir)
-            self.pluginsDir = StaticInfo.replacePaths(os.path.join(self.packageDirs, "Plugins"))
+            self.pluginsDir = self.api.replacePaths(os.path.join(self.packageDirs, "Plugins"))
             if not os.path.isdir(self.pluginsDir): os.makedirs(self.pluginsDir)
-            self.uiDir = StaticInfo.replacePaths(os.path.join(self.packageDirs, "Ui"))
+            self.uiDir = self.api.replacePaths(os.path.join(self.packageDirs, "Ui"))
             if not os.path.isdir(self.uiDir): os.makedirs(self.uiDir)
-            self.cacheDir = StaticInfo.replacePaths(os.path.join(self.packageDirs, "cache"))
+            self.cacheDir = self.api.replacePaths(os.path.join(self.packageDirs, "cache"))
             if not os.path.isdir(self.cacheDir): os.makedirs(self.cacheDir)
         self.MainWindow.appName = self.settData.get("appName")
         self.MainWindow.__version__ = self.settData.get("apiVersion")
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
-        self.menuFile = StaticInfo.replacePaths(os.path.join(self.packageDirs, self.settData.get("menu")))
-        self.hotKeysFile = StaticInfo.replacePaths(os.path.join(self.packageDirs, self.settData.get("hotkeys")))
+        self.menuFile = self.api.replacePaths(os.path.join(self.packageDirs, self.settData.get("menu")))
+        self.hotKeysFile = self.api.replacePaths(os.path.join(self.packageDirs, self.settData.get("hotkeys")))
         self.locale = self.settData.get("hotkeys")
         os.chdir(self.packageDirs)
 
@@ -218,6 +207,7 @@ class Ui_MainWindow(object):
         [os.makedirs(dir) for dir in [self.themesDir, self.pluginsDir, self.uiDir] if not os.path.isdir(dir)]
         self.tabLog = {}
         stateFile = os.path.join(self.packageDirs, 'data.msgpack')
+        self.MainWindow.setWindowTitle(self.MainWindow.appName)
         try:
             if os.path.isfile(stateFile):
                 with open(stateFile, 'rb') as f:
@@ -283,41 +273,12 @@ class Ui_MainWindow(object):
             f.write(packed_data)
         self.settFile.close()
 
-    def undo(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
-        tab.textEdit.undo()
-
-    def redo(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
-        tab.textEdit.redo()
-
-    def cut(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
-        tab.textEdit.cut()
-
-    def copy(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
-        tab.textEdit.copy()
-
-    def paste(self, i=None):
-        tab = self.tabWidget.widget(i or self.api.activeWindow.activeView.currentTabIndex())
-        tab.textEdit.paste()
-
-
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
 
-        self.constants = {
-            "platform": StaticInfo.get_platform(),
-            "basedir": StaticInfo.get_basedir(),
-            "filedir": StaticInfo.get_filedir(__file__),
-            "username": os.getlogin(),
-        }
-
         self.textContextMenu = QtWidgets.QMenu(self)
         self.tabBarContextMenu = QtWidgets.QMenu(self)
-
 
         self.setupUi(self, self.argvParse())
         self.api.activeWindow = self.api.Window(self.api, qmwclass=self)
@@ -332,23 +293,19 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.pl.registerCommand({"command": "addTab"})
         self.pl.registerCommand({"command": "showPackages"})
 
-        # self.pl.registerCommand({"command": LogConsoleCommand, "shortcut": "shift+esc"})
-        # self.pl.registerCommand({"keys": [], "command": {"command": "LogConsoleCommand"}})
 
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
         if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
 
-        # self.pl.load_plugins()
+        self.pl.load_plugins()
         self.api.activeWindow.loadThemes(self.menuBar())
         self.pl.registerCommands()
 
         if self.hotKeysFile and os.path.isfile(self.hotKeysFile): self.pl.registerShortcuts(json.load(open(self.hotKeysFile, "r+")))
 
-        self.pl.clearCache()
-
         self.restoreWState()
 
-        # self.api.App.setTreeWidgetDir("/")
+        self.api.activeWindow.setTreeWidgetDir("/")
 
         openFileCommand = self.api.activeWindow.getCommand("openFile")
         if openFileCommand:
