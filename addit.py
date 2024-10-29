@@ -276,6 +276,7 @@ class TextEdit(QtWidgets.QTextEdit):
             self.mw.keyPressEvent(event)
             return
         else:
+            # self.mw.keyPressEvent(event)
             QtWidgets.QTextEdit.keyPressEvent(self, event)
         self.mw.api.activeWindow.activeView.setSaved(False)
         if event.key() == Qt.Key.Key_Tab and self.completer.popup().isVisible():

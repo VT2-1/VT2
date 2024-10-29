@@ -1,7 +1,6 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-import os, sys, configparser, json, importlib, re, subprocess, platform, inspect
+import os, sys, json, importlib, re, platform, inspect, zipfile, shutil, urllib, uuid
 import importlib.util
-import PyQt6
 import os, json
 import builtins
 
@@ -40,7 +39,7 @@ class PluginManager:
     def __init__(self, plugin_directory: str, w):
         self.plugin_directory = plugin_directory
         self.__window = w
-        self.pm = PackageManager(w, self.plugin_directory)
+        # self.pm = PackageManager(w, w.api, self.plugin_directory)
         self.__menu_map = {}
         self.commands = []
         self.shortcuts = []
@@ -52,7 +51,6 @@ class PluginManager:
         module = importlib.util.module_from_spec(spec)
         sys.modules[n] = module
         spec.loader.exec_module(module)
-        module.initAPI(self.__window.api)
         return module
 
     def load_plugins(self):
@@ -63,8 +61,7 @@ class PluginManager:
                 fullPath = os.path.join(self.plugin_directory, plugDir)
                 os.chdir(fullPath)
                 if os.path.isdir(fullPath) and os.path.isfile(f"config.vt-conf"):
-                    module = None
-                    info = self.initPlugin(os.path.join(fullPath, "config.vt-conf"))
+                    self.initPlugin(os.path.join(fullPath, "config.vt-conf"))
                     if self.mainFile:
                         pyFile = self.mainFile
                         try:
@@ -74,10 +71,10 @@ class PluginManager:
                                 sys.path.insert(0, fullPath)
                                 self.module = self.importModule(pyFile, self.name + "Plugin")
                                 if hasattr(self.module, "initAPI"):
-                                    module.initAPI(self.__window.api)
-
+                                    self.module.initAPI(self.__window.api)
                                 sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                         except Exception as e:
+                            print(e)
                             self.__window.api.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
                         finally:
                             sys.path.pop(0)
@@ -142,7 +139,6 @@ class PluginManager:
                 if 'shortcut' in item:
                     if not item['shortcut'] in self.shortcuts:
                         action.setShortcut(QtGui.QKeySequence(item['shortcut']))
-                        print(action.text(), item['shortcut'])
                         action.setStatusTip(item['shortcut'])
                         self.shortcuts.append(item['shortcut'])
                         self.__window.addAction(action)
@@ -165,6 +161,7 @@ class PluginManager:
         ckwargs = kwargs
         command = c
         c = self.regCommands.get(command.get("command"))
+        print(c)
         if c:
             try:
                 args = command.get("args")
@@ -193,6 +190,7 @@ class PluginManager:
                     self.__window.api.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'")
             except Exception as e:
                 self.__window.api.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
+                print(e)
         else:
             self.__window.api.activeWindow.setLogMsg(f"Command '{command}' not found")
 
@@ -215,6 +213,28 @@ class PluginManager:
             else:
                 self.__window.api.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' already used.")
 
+    def registerClass(self, data):
+        commandClass = data.get("command")
+        if inspect.isclass(commandClass):
+            commandN = commandClass.__name__
+            pl = commandClass.__module__
+            args = data.get("args", [])
+            kwargs = data.get("kwargs", {})
+            action = data.get("action") or QtGui.QAction("", self.__window)
+            if 'shortcut' in data:
+                if not data['shortcut'] in self.shortcuts:
+                    action.setShortcut(QtGui.QKeySequence(data['shortcut']))
+                    self.shortcuts.append(data['shortcut'])
+                    action.triggered.connect(lambda: self.executeCommand({"command": commandN, "args": args, "kwargs": kwargs}))
+                    self.__window.addAction(action)
+            self.regCommands[commandN] = {
+                "action": action,
+                "command": commandClass,
+                "args": args,
+                "kwargs": kwargs,
+                "plugin": pl,
+            }
+
     def registerCommand(self, commandInfo):
         command = commandInfo.get("command")
         if type(command) == str:
@@ -224,16 +244,16 @@ class PluginManager:
         else:
             commandN = command.get("command")
         pl = commandInfo.get("plugin")
-        action = commandInfo.get("action")
+        action = commandInfo.get("action") or QtGui.QAction("", self.__window)
 
         args = commandInfo.get("args", [])
         kwargs = commandInfo.get("kwargs", {})
-
+        action.triggered.connect(lambda: self.executeCommand({"command": commandN, "args": args, "kwargs": kwargs}))
         if 'shortcut' in commandInfo:
             if not commandInfo['shortcut'] in self.shortcuts:
-                action = QtGui.QAction("", self.__window)
                 action.setShortcut(QtGui.QKeySequence(commandInfo['shortcut']))
                 self.shortcuts.append(commandInfo['shortcut'])
+                self.__window.addAction(action)
 
         if pl:
             try:
@@ -282,7 +302,6 @@ class PluginManager:
             if pl:
                 try:
                     command_func = getattr(pl, commandN)
-                    print(type(command_func), command_func)
                     self.regCommands[commandN] = {
                         "action": action,
                         "command": command_func,
@@ -304,6 +323,7 @@ class PluginManager:
                     }
                 else:
                     self.__window.api.activeWindow.setLogMsg(f"Command '{commandN}' not found")
+
     def newRegCommands(self, m):
         classes = inspect.getmembers(m, inspect.isclass)
         for cl in classes:
@@ -388,7 +408,7 @@ class VtAPI:
         def saveFile(self, view=False):
             self.__mw.pl.executeCommand({"command": "saveFile"})
         
-        def activeView(self):
+        def activeView(self) -> 'VtAPI.View':
             return self.activeView
         
         def views(self):
@@ -396,7 +416,10 @@ class VtAPI:
         
         def focus(self, view):
             self.activeView = view
-        
+
+        def registerCommandClass(self, data):
+            self.__mw.pl.registerClass(data)
+
         def runCommand(self, command):
             self.__mw.pl.executeCommand(command)
         
@@ -416,6 +439,7 @@ class VtAPI:
             themePath = os.path.join(self.__mw.themesDir, theme)
             if os.path.isfile(themePath):
                 self.__mw.setStyleSheet(open(themePath, "r+").read())
+                self.__mw.themeFile = theme
 
         def getLog(self):
             return self.__mw.logger.log
@@ -436,11 +460,6 @@ class VtAPI:
             self.__mw.treeView.setRootIndex(self.model.index(dir))
             return self.model
 
-        def setTheme(self, theme):
-            themePath = os.path.join(self.__mw.themesDir, theme)
-            if os.path.isfile(themePath):
-                self.__mw.setStyleSheet(open(themePath, "r+").read())
-
         def setTab(self, i):
             self.__mw.tabWidget.setCurrentIndex(i - 1)
 
@@ -452,6 +471,24 @@ class VtAPI:
 
         def addDockWidget(self, areas, dock: 'VtAPI.Widgets.DockWidget'):
             self.__mw.addDockWidget(areas, dock)
+
+        def showDialog(self, content, flags=0, location=-1, width=320, height=240, on_navigate=None, on_hide=None):
+            self.content = content
+            self.flags = flags
+            self.location = location
+            self.width = width
+            self.height = height
+            self.on_navigate = on_navigate
+            self.on_hide = on_hide
+
+            self.dialog = VtAPI.Widgets.Dialog(parent=self.__mw)
+            if self.flags:
+                self.dialog.setWindowFlags(self.flags)
+            self.dialog.setFixedWidth(self.width)
+            self.dialog.setFixedHeight(self.height)
+
+            self.dialog.setLayout(self.content)
+            self.dialog.exec()
         
         def isDockWidget(self, area):
             dock_widgets = self.__mw.findChildren(QtWidgets.QDockWidget)
@@ -464,7 +501,7 @@ class VtAPI:
                 themes = []
                 for theme in os.listdir(self.__mw.themesDir):
                     if os.path.isfile(os.path.join(self.__mw.themesDir, theme)):
-                        themes.append({"caption": theme, "command": {"command": f"setTheme", "kwargs": {"theme": theme}}})
+                        themes.append({"caption": theme, "command": {"command": f"SetThemeCommand", "kwargs": {"theme": theme}}})
                 self.updateMenu("themes", themes)
 
     class View:
@@ -472,8 +509,12 @@ class VtAPI:
             self.__api = api
             self.window = window
             self.__tab = qwclass
-            self.id = self.__tab.objectName().split("-")[-1]
-            self.__tabWidget = self.__tab.parentWidget().parentWidget()
+            if self.__tab:
+                self.id = self.__tab.objectName().split("-")[-1]
+                self.__tabWidget = self.__tab.parentWidget().parentWidget()
+            else:
+                self.id = None
+                self.__tabWidget = None
             self.text = text
             self.syntaxFile = syntaxFile
             self.file_name = file_name
@@ -491,6 +532,9 @@ class VtAPI:
 
         def tabIndex(self):
             return self.__tabWidget.currentIndex()
+
+        def close(self):
+            return self.__tabWidget.closeTab(self.tabIndex())
 
         def window(self):
             return self.window
@@ -653,24 +697,6 @@ class VtAPI:
 
         def rehighlite(self):
             self.__tab.textEdit.highLighter.rehighlight()
-
-        def show_popup(self, content, flags=0, location=-1, max_width=320, max_height=240, on_navigate=None, on_hide=None):
-            self.content = content
-            self.flags = flags
-            self.location = location
-            self.max_width = max_width
-            self.max_height = max_height
-            self.on_navigate = on_navigate
-            self.on_hide = on_hide
-
-            self.dialog = QtWidgets.QDialog()
-            self.dialog.setWindowFlags(self.flags)
-            self.dialog.setMaximumWidth(self.max_width)
-            self.dialog.setMaximumHeight(self.max_height)
-
-            self.dialog.setLayout(self.content)
-
-            self.dialog.exec()
 
     class Selection:
         def __init__(self, regions=None):
@@ -860,22 +886,23 @@ class VtAPI:
             self.__window.tabWidget.currentChanged.connect(self.tabChngd)
 
         def tabChngd(self, index):
-            if index > -1 and self.__window.api.activeWindow.activeView:
-                self.__window.setWindowTitle(
-                    f"{os.path.normpath(self.__window.api.activeWindow.activeView.getFile() or 'Untitled')} - {self.__window.appName}")
-                if index >= 0: self.__window.encodingLabel.setText(self.__window.api.activeWindow.activeView.getEncoding())
-                self.updateEncoding()
-            else:
-                self.__window.setWindowTitle(self.__window.appName)
+            try:
+                if index > -1 and self.__window.api.activeWindow.activeView:
+                    self.__window.setWindowTitle(
+                        f"{os.path.normpath(self.__window.api.activeWindow.activeView.getFile() or 'Untitled')} - {self.__window.appName}")
+                    if index >= 0: self.__window.encodingLabel.setText(self.__window.api.activeWindow.activeView.getEncoding())
+                    self.updateEncoding()
+                else:
+                    self.__window.setWindowTitle(self.__window.appName)
 
-            view = self.__window.api.View(self.__window.api, self.__window, qwclass=self.__window.tabWidget.currentWidget())
-            view.id = self.__window.tabWidget.currentWidget().objectName().split("-")[-1]
-            for v in self.__window.api.activeWindow.views:
-                if v == view:
-                    self.__window.api.activeWindow.activeView = v
-                    print(v)
-                    break
-            self.tabChanged.emit()
+                view = self.__window.api.View(self.__window.api, self.__window, qwclass=self.__window.tabWidget.currentWidget())
+                view.id = self.__window.tabWidget.currentWidget().objectName().split("-")[-1]
+                for v in self.__window.api.activeWindow.views:
+                    if v == view:
+                        self.__window.api.activeWindow.activeView = v
+                        break
+                self.tabChanged.emit()
+            except: pass
 
         def updateEncoding(self):
             e = self.__window.api.activeWindow.activeView.getEncoding()
@@ -892,6 +919,17 @@ class VtAPI:
 
     class Widgets:
         class DockWidget(QtWidgets.QDockWidget):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.__window = None
+
+            def parent(self):
+                return None
+
+            def window(self):
+                return None
+
+        class Dialog(QtWidgets.QDialog):
             def __init__(self, parent=None):
                 super().__init__(parent)
                 self.__window = None
@@ -1003,82 +1041,10 @@ class VtAPI:
     def installed_packagesPath(self):
         return "/path/to/installed/packages"
 
-class ConsoleWidget(VtAPI.Widgets.DockWidget):
-    def __init__(self, api):
-        super().__init__()
-        self.api = api
-        self.setWindowTitle(self.api.appName+" - Console")
-        self.setFeatures(QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetClosable | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetFloatable)
-        self.setAllowedAreas(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea)
-        self.consoleWidget = QtWidgets.QWidget()
-        self.consoleWidget.setObjectName("consoleWidget")
-        self.verticalLayout = QtWidgets.QVBoxLayout(self.consoleWidget)
-        self.verticalLayout.setObjectName("verticalLayout")
-        self.textEdit = QtWidgets.QTextEdit(parent=self.consoleWidget)
-        self.textEdit.setReadOnly(True)
-        self.textEdit.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
-        self.textEdit.setObjectName("consoleOutput")
-        self.verticalLayout.addWidget(self.textEdit)
-        self.lineEdit = QtWidgets.QLineEdit(parent=self.consoleWidget)
-        self.lineEdit.setMouseTracking(False)
-        self.lineEdit.setLayoutDirection(QtCore.Qt.LayoutDirection.LeftToRight)
-        self.lineEdit.setCursorMoveStyle(QtCore.Qt.CursorMoveStyle.LogicalMoveStyle)
-        self.lineEdit.setObjectName("consoleCommandLine")
-        self.verticalLayout.addWidget(self.lineEdit)
-        self.setWidget(self.consoleWidget)
-        self.lineEdit.returnPressed.connect(self.sendCommand)
-    def sendCommand(self):
-        text = self.lineEdit.text()
-        if text:
-            if text.startswith("vtapi"):
-                if len(text.split(".")) == 2:
-                    apiCommand = text.split(".")[-1] 
-                    if hasattr(self.window.api, apiCommand):
-                        self.api.activeWindow.setLogMsg(str(getattr(self.window.api, apiCommand)()))
-                self.api.activeWindow.setLogMsg(str(self.window.api))
-                self.lineEdit.clear()
-            else:
-                self.api.activeWindow.runCommand({"command": self.lineEdit.text()})
-                self.lineEdit.clear()
-    def closeEvent(self, e):
-        self.api.activeWindow.runCommand({"command": "LogConsoleCommand"})
-        e.ignore()
-
-class LogConsoleCommand(VtAPI.Plugin.WindowCommand):
-    def run(self, checked=None):
-        if not self.api.activeWindow.isDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea):
-            self.console = ConsoleWidget(self.api)
-            self.console.textEdit.append(self.window.getLog())
-            self.window.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.console)
-        else:
-            self.console = self.window.isDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea)
-            self.console.deleteLater()
-
-class NewTabCommand(VtAPI.Plugin.WindowCommand):
-    def run(self):
-        self.window.newFile()
-
-class SelectAllCommand(VtAPI.Plugin.TextCommand):
-    def run(self):
-        self.view.selectAll()
-class CopyCommand(VtAPI.Plugin.TextCommand):
-    def run(self):
-        print("Heellooooo")
-        self.view.copy()
-
-class PasteCommand(VtAPI.Plugin.TextCommand):
-    def run(self):
-        cb = QtGui.QGuiApplication.clipboard()
-        self.view.insert(cb.text())
-
-class CutCommand(VtAPI.Plugin.TextCommand):
-    def run(self):
-        self.view.cut()
-
-class UndoCommand(VtAPI.Plugin.TextCommand):
-    def run(self):
-        self.view.undo()
-
-class RedoCommand(VtAPI.Plugin.TextCommand):
-    def run(self):
-        self.view.redo()
+class CloseTabCommand(VtAPI.Plugin.WindowCommand):
+    def run(self, view=None):
+        if not view:
+            view = self.window.activeView
+        for v in self.window.views:
+            if v == view:
+                v.close()

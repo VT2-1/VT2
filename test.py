@@ -11,7 +11,6 @@ class View:
         return (self.qwclass == other.qwclass)
 
     def __hash__(self):
-        # Важно переопределить __hash__, если вы переопределяете __eq__
         return hash((self.api, self.parent, self.qwclass))
 
 # Пример использования

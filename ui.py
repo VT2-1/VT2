@@ -5,7 +5,7 @@ from datetime import datetime
 import msgpack, io
 
 from addit import *
-from api2 import PluginManager, VtAPI
+from api2 import PluginManager, VtAPI, CloseTabCommand
 
 class Logger:
     def __init__(self, window):
@@ -23,9 +23,14 @@ class Logger:
     @log.setter
     def log(self, value):
         self._log = value
-        if self.__window.console:
-            self.__window.console.textEdit.clear()
-            self.__window.console.textEdit.append(value)
+        if self.__window.api.activeWindow:
+            dock = self.__window.api.activeWindow.isDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea)
+            if dock:
+                try:
+                    console = dock.textEdit
+                    console.clear()
+                    console.append(value)
+                except: pass
 
     def write(self, message):
         if message:
@@ -92,6 +97,8 @@ class Ui_MainWindow(object):
 
         self.api = VtAPI()
         self.settings()
+        self.api.packagesDir = self.packageDirs
+        self.api.cacheDir = self.cacheDir
         self.logger = Logger(self.MainWindow)
         self.logger.log = "VarTexter window loading..."
 
@@ -212,12 +219,12 @@ class Ui_MainWindow(object):
                 with open(stateFile, 'rb') as f:
                     packed_data = f.read()
                     self.tabLog = msgpack.unpackb(packed_data, raw=False)
-                    if self.tabLog.get("themeFile") and os.path.isfile(self.tabLog.get("themeFile")): self.themeFile = self.tabLog.get("themeFile")
+                    if self.tabLog.get("themeFile"): self.themeFile = self.tabLog.get("themeFile")
                     if self.tabLog.get("locale"): self.locale = self.tabLog.get("locale")
                     else:
                         if self.locale == "auto":
                             self.locale = self.defineLocale()
-                    self.api.activeWindow.setTheme(self.themeFile)  
+                    self.api.activeWindow.setTheme(self.themeFile)
         except ValueError:
             self.logger.log += f"\nFailed to restore window state. No file found at {stateFile}"  
 
@@ -284,14 +291,11 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.windowInitialize()
 
         self.pl = PluginManager(self.pluginsDir, self)
-        self.pl.registerCommand({"command": "setTheme"})
-        self.pl.registerCommand({"command": "hideShowMinimap"})
-        self.pl.registerCommand({"command": "settingsHotKeys"})
-        self.pl.registerCommand({"command": "argvParse"})
-        self.pl.registerCommand({"command": "closeTab"})
-        self.pl.registerCommand({"command": "addTab"})
-        self.pl.registerCommand({"command": "showPackages"})
-
+        # self.pl.registerCommand({"command": "hideShowMinimap"})
+        # self.pl.registerCommand({"command": "settingsHotKeys"})
+        # self.pl.registerCommand({"command": "argvParse"})
+        self.pl.registerClass({"command": CloseTabCommand, "shortcut": "ctrl+w"})
+        # self.pl.registerCommand({"command": "addTab"})
 
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
         if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
@@ -309,13 +313,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         openFileCommand = self.api.activeWindow.getCommand("openFile")
         if openFileCommand:
             openFileCommand.get("command")([sys.argv[1]] if len(sys.argv) > 1 else [], used=False)
-
-    def setTheme(self, theme):
-        themePath = os.path.join(self.themesDir, theme)
-
-        if os.path.isfile(themePath):
-            self.setStyleSheet(open(themePath, "r+").read())
-            self.themeFile = themePath
 
     def argvParse(self):
         return sys.argv
@@ -360,7 +357,7 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
     app.applicationName = w.appName
-    print(w.api.windows)
+    print(w.pl.shortcuts)
     w.show()
     sys.exit(app.exec())
 
