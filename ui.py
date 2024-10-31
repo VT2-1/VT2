@@ -5,7 +5,7 @@ from datetime import datetime
 import msgpack, io
 
 from addit import *
-from api2 import PluginManager, VtAPI, CloseTabCommand
+from api2 import PluginManager, VtAPI
 
 class Logger:
     def __init__(self, window):
@@ -48,7 +48,7 @@ class Ui_MainWindow(object):
     sys.path.insert(0, ".")
 
     def setupUi(self, MainWindow, argv=[]):
-        self.MainWindow = MainWindow
+        self.MainWindow: QtWidgets.QMainWindow = MainWindow
         self.appPath = os.path.basename(__file__)
         self.appPath = os.path.dirname(argv[0])
         self.themeFile = ""
@@ -134,16 +134,11 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), name or "Untitled")
         self.api.activeWindow.setTab(-1)
 
-        new_view = self.api.View(self.api, self, qwclass=self.tab)
+        new_view = self.api.View(self.api, self.api.activeWindow, qwclass=self.tab)
         self.api.activeWindow.views.append(new_view)
-        self.api.activeWindow.activeView = new_view
+        self.api.activeWindow.focus(new_view)
 
         self.api.activeWindow.signals.tabCreated.emit()
-
-    def closeTab(self, i: int = None):
-        if not i:
-            i = self.api.activeWindow.activeView.currentTabIndex()
-        self.tabWidget.closeTab(i)
 
     def defineLocale(self):
         return QtCore.QLocale.system().name().split("_")[0]
@@ -294,7 +289,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         # self.pl.registerCommand({"command": "hideShowMinimap"})
         # self.pl.registerCommand({"command": "settingsHotKeys"})
         # self.pl.registerCommand({"command": "argvParse"})
-        self.pl.registerClass({"command": CloseTabCommand, "shortcut": "ctrl+w"})
         # self.pl.registerCommand({"command": "addTab"})
 
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
@@ -302,7 +296,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.pl.load_plugins()
         self.api.activeWindow.loadThemes(self.menuBar())
-        self.pl.registerCommands()
 
         if self.hotKeysFile and os.path.isfile(self.hotKeysFile): self.pl.registerShortcuts(json.load(open(self.hotKeysFile, "r+")))
 
@@ -347,7 +340,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             key_text = "Backspace"
         elif key_code == Qt.Key.Key_Tab:
             key_text = "Tab"
-        
+
         action = self.pl.findActionShortcut(modifier_string + key_text)
         if action:
             print(action)
@@ -357,8 +350,8 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
     app.applicationName = w.appName
-    print(w.pl.shortcuts)
     w.show()
+    if w.api.activeWindow.activeView: w.api.activeWindow.activeView.update()
     sys.exit(app.exec())
 
 if __name__ == "__main__":

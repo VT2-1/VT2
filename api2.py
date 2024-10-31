@@ -1,18 +1,14 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-import os, sys, json, importlib, re, platform, inspect, zipfile, shutil, urllib, uuid
+import os, sys, json, importlib, re, platform, inspect
 import importlib.util
 import os, json
 import builtins
-
-from addit import PackageManager
-
 
 BLOCKED = [
     "PyQt6"
 ]
 
 oldCoreApp = QtCore.QCoreApplication
-
 
 class SafeImporter:
     def __init__(self, disallowed_imports):
@@ -38,10 +34,9 @@ class BlockedQApplication:
 class PluginManager:
     def __init__(self, plugin_directory: str, w):
         self.plugin_directory = plugin_directory
-        self.__window = w
-        # self.pm = PackageManager(w, w.api, self.plugin_directory)
+        self.__window: QtWidgets.QMainWindow = w
+        self.__windowApi: VtAPI = self.__window.api
         self.__menu_map = {}
-        self.commands = []
         self.shortcuts = []
         self.regCommands = {}
         self.dPath = None
@@ -71,11 +66,11 @@ class PluginManager:
                                 sys.path.insert(0, fullPath)
                                 self.module = self.importModule(pyFile, self.name + "Plugin")
                                 if hasattr(self.module, "initAPI"):
-                                    self.module.initAPI(self.__window.api)
+                                    self.module.initAPI(self.__windowApi)
                                 sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                         except Exception as e:
                             print(e)
-                            self.__window.api.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
+                            self.__windowApi.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
                         finally:
                             sys.path.pop(0)
                     if self.menuFile:
@@ -84,7 +79,7 @@ class PluginManager:
                         try:
                             self.registerShortcuts(json.load(open(self.scFile, "r+")))
                         except Exception as e:
-                            self.__window.api.activeWindow.setLogMsg(
+                            self.__windowApi.activeWindow.setLogMsg(
                                 f"Failed load shortcuts for '{self.name}' from '{self.scFile}': {e}")
 
         finally:
@@ -103,7 +98,7 @@ class PluginManager:
                 elif menu == "tabBarContextMenu":
                     self.parseMenu(menuFile.get(menu), self.__window.tabBarContextMenu, pl=module, localemenu="TabBarContextMenu")
         except Exception as e:
-            self.__window.api.activeWindow.setLogMsg(f"Failed load menu from '{f}': {e}")
+            self.__windowApi.activeWindow.setLogMsg(f"Failed load menu from '{f}': {e}")
 
     def initPlugin(self, path):
         config = json.load(open(path, "r+"))
@@ -143,30 +138,27 @@ class PluginManager:
                         self.shortcuts.append(item['shortcut'])
                         self.__window.addAction(action)
                     else:
-                        self.__window.api.activeWindow.setLogMsg(
+                        self.__windowApi.activeWindow.setLogMsg(
                             f"Shortcut '{item['shortcut']}' for function '{item['command']}' is already used.")
 
                 if 'command' in item:
                     args = item.get('command').get("args")
                     kwargs = item.get('command').get("kwargs")
-                    self.commands.append({"action": action, "shortcut": item.get("shortcut"), "command": item['command'], "plugin": pl, "args": args, "kwargs": kwargs})
+                    self.registerCommand({"action": action, "command": item['command'], "plugin": pl, "args": args, "kwargs": kwargs})
                     if 'checkable' in item:
                         action.setCheckable(item['checkable'])
                         if 'checked' in item:
                             action.setChecked(item['checked'])
-                    action.triggered.connect(lambda checked, cmd=item['command']: self.executeCommand(cmd, checked=checked))
                 parent.addAction(action)
 
     def executeCommand(self, c, *args, **kwargs):
         ckwargs = kwargs
         command = c
         c = self.regCommands.get(command.get("command"))
-        print(c)
         if c:
             try:
                 args = command.get("args")
                 kwargs = command.get("kwargs")
-                checkable = command.get("checkable")
                 action = c.get("action")
                 if action and action.isCheckable():
                     checked_value = ckwargs.get("checked")
@@ -179,20 +171,20 @@ class PluginManager:
                 cl = c.get("command")
                 print(cl)
                 if issubclass(cl, VtAPI.Plugin.TextCommand):
-                    c = cl(self.__window.api, self.__window.api.activeWindow.activeView)
+                    c = cl(self.__windowApi, self.__windowApi.activeWindow.activeView)
                 elif issubclass(cl, VtAPI.Plugin.WindowCommand):
-                    c = cl(self.__window.api, self.__window.api.activeWindow)
+                    c = cl(self.__windowApi, self.__windowApi.activeWindow)
                 elif issubclass(cl, VtAPI.Plugin.ApplicationCommand):
-                    c = cl(self.__window.api)
+                    c = cl(self.__windowApi)
                 out = c.run(*args or [], **kwargs or {})
-                self.__window.api.activeWindow.setLogMsg(f"Executed command '{command}' with args '{args}', kwargs '{kwargs}'")
+                self.__windowApi.activeWindow.setLogMsg(f"Executed command '{command}' with args '{args}', kwargs '{kwargs}'")
                 if out:
-                    self.__window.api.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'")
+                    self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'")
             except Exception as e:
-                self.__window.api.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
+                self.__windowApi.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
                 print(e)
         else:
-            self.__window.api.activeWindow.setLogMsg(f"Command '{command}' not found")
+            self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' not found")
 
     def registerShortcuts(self, data):
         for sh in data:
@@ -209,9 +201,9 @@ class PluginManager:
 
                 action.triggered.connect(lambda checked, cmd=command: self.executeCommand(cmd))
                 self.__window.addAction(action)
-                self.__window.api.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' registered.")
+                self.__windowApi.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' registered.")
             else:
-                self.__window.api.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' already used.")
+                self.__windowApi.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' already used.")
 
     def registerClass(self, data):
         commandClass = data.get("command")
@@ -266,7 +258,7 @@ class PluginManager:
                     "plugin": pl,
                 }
             except (ImportError, AttributeError, TypeError) as e:
-                self.__window.api.activeWindow.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
+                self.__windowApi.activeWindow.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
         else:
             if not inspect.isclass(commandN):
                 command_func = getattr(sys.modules[__name__], commandN, None)
@@ -281,53 +273,7 @@ class PluginManager:
                     "plugin": None,
                 }
             else:
-                self.__window.api.activeWindow.setLogMsg(f"Command '{commandN}' not found")
-
-    def registerCommands(self):
-        for commandInfo in self.commands:
-            command = commandInfo.get("command")
-            if type(command) == str:
-                commandN = command
-            elif inspect.isclass(command):
-                commandN = command
-            else:
-                commandN = command.get("command")
-            pl = commandInfo.get("plugin")
-            action = commandInfo.get("action")
-
-            args = commandInfo.get("args", [])
-            kwargs = commandInfo.get("kwargs", {})
-            checkable = commandInfo.get("checkable", False)
-
-            if pl:
-                try:
-                    command_func = getattr(pl, commandN)
-                    self.regCommands[commandN] = {
-                        "action": action,
-                        "command": command_func,
-                        "args": args,
-                        "kwargs": kwargs,
-                        "plugin": pl,
-                    }
-                except (ImportError, AttributeError, TypeError) as e:
-                    self.__window.api.activeWindow.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
-            else:
-                command_func = getattr(sys.modules[__name__], commandN, None)
-                if command_func:
-                    self.regCommands[commandN] = {
-                        "action": action,
-                        "command": command_func,
-                        "args": args,
-                        "kwargs": kwargs,
-                        "plugin": None,
-                    }
-                else:
-                    self.__window.api.activeWindow.setLogMsg(f"Command '{commandN}' not found")
-
-    def newRegCommands(self, m):
-        classes = inspect.getmembers(m, inspect.isclass)
-        for cl in classes:
-            self.commands.append(cl)
+                self.__windowApi.activeWindow.setLogMsg(f"Command '{commandN}' not found")
 
     def findAction(self, parent_menu, caption=None, command=None):
         for action in parent_menu.actions():
@@ -378,44 +324,45 @@ class PluginManager:
         if menu:
             menu.clear()
 
-    def clearCache(self):
-        del self.dPath, self.commands, self.shortcuts
-
 class VtAPI:
     def __init__(self):
         self.__app = QtWidgets.QApplication.instance()
         self.appName = self.__app.applicationName()
         self.windows = []
-        self.activeWindow = None
+        self.activeWindow: VtAPI.Window | None = None
 
     class Window:
-        def __init__(self, api, views=None, activeView=None, qmwclass: QtWidgets.QMainWindow=None):
-            self.__api = api
-            self.__mw = qmwclass
-            self.signals = VtAPI.Signals(self.__mw)
+        def __init__(self, api, views=None, activeView=None, qmwclass: QtWidgets.QMainWindow | None =None):
+            self.__api: VtAPI = api
+            self.__mw: QtWidgets.QMainWindow = qmwclass
+            self.signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
             self.views = views or []
-            self.activeView = activeView
+            self.activeView: VtAPI.View | None = activeView
 
             self.__api.windows.append(self)
 
-        def newFile(self):
+        def newFile(self) -> 'VtAPI.View':
             self.__mw.addTab()
             tab = self.__mw.tabWidget.currentWidget()
+            return self.activeView
         
         def openFiles(self, files):
-            self.__mw.pl.executeCommand({"command": "openFile", "args": files})
+            """Use command with name 'OpenFileCommand'"""
+            self.__mw.pl.executeCommand({"command": "OpenFileCommand", "args": files})
         
-        def saveFile(self, view=False):
+        def saveFile(self, view=None):
             self.__mw.pl.executeCommand({"command": "saveFile"})
         
         def activeView(self) -> 'VtAPI.View':
             return self.activeView
         
-        def views(self):
+        def views(self) -> list:
             return self.views
-        
+
         def focus(self, view):
-            self.activeView = view
+            if view in self.views:
+                self.__mw.tabWidget.setCurrentIndex(view.tabIndex())
+                self.activeView = view
 
         def registerCommandClass(self, data):
             self.__mw.pl.registerClass(data)
@@ -506,12 +453,12 @@ class VtAPI:
 
     class View:
         def __init__(self, api, window, qwclass=None, text="", syntaxFile=None, file_name=None, read_only=False):
-            self.__api = api
-            self.window = window
-            self.__tab = qwclass
+            self.__api: VtAPI = api
+            self.window: VtAPI.Window = window
+            self.__tab: QtWidgets.QWidget = qwclass
             if self.__tab:
-                self.id = self.__tab.objectName().split("-")[-1]
-                self.__tabWidget = self.__tab.parentWidget().parentWidget()
+                self.id: str = self.__tab.objectName().split("-")[-1]
+                self.__tabWidget: QtWidgets.QTabWidget = self.__tab.parentWidget().parentWidget()
             else:
                 self.id = None
                 self.__tabWidget = None
@@ -526,6 +473,12 @@ class VtAPI:
             if not isinstance(other, VtAPI.View):
                 return NotImplemented
             return self.id == other.id
+        
+        def update(self):
+            view = VtAPI.View(self.__api, self.window, qwclass=self.__tabWidget.currentWidget())
+            view.id = self.__tabWidget.currentWidget().objectName().split("-")[-1]
+            print(type(self.window))
+            self.window.focus(view)
 
         def __hash__(self):
             return hash(self.tabIndex())
@@ -543,7 +496,7 @@ class VtAPI:
             return self.__tabWidget.tabText(self.__tabWidget.indexOf(self.__tab))
 
         def setTitle(self, text):
-            return self.__tabWidget.setText(self.__tabWidget.indexOf(self.__tab), text)
+            return self.__tabWidget.setTabText(self.__tabWidget.indexOf(self.__tab), text)
 
         def getText(self):
             text = self.__tab.textEdit.toPlainText()
@@ -791,8 +744,8 @@ class VtAPI:
     class Plugin:
         class TextCommand:
             def __init__(self, api, view):
-                self.api = api
-                self.view = view
+                self.api: VtAPI = api
+                self.view: VtAPI.View = view
 
             def run(self, edit):
                 ...
@@ -808,8 +761,8 @@ class VtAPI:
 
         class WindowCommand:
             def __init__(self, api, window):
-                self.api = api
-                self.window = window
+                self.api: VtAPI = api
+                self.window: VtAPI.Window = window
 
             def run(self):
                 ...
@@ -825,7 +778,7 @@ class VtAPI:
 
         class ApplicationCommand:
             def __init__(self, api):
-                self.api = api
+                self.api: VtAPI = api
 
             def run(self):
                 ...
@@ -880,32 +833,33 @@ class VtAPI:
 
         def __init__(self, w):
             super().__init__(w)
-            self.__window = w
+            self.__window: QtWidgets.QMainWindow = w
+            self.__windowApi: VtAPI = self.__window.api
 
             self.__window.treeView.doubleClicked.connect(self.onDoubleClicked)
             self.__window.tabWidget.currentChanged.connect(self.tabChngd)
 
         def tabChngd(self, index):
             try:
-                if index > -1 and self.__window.api.activeWindow.activeView:
+                if index > -1 and self.__windowApi.activeWindow.activeView:
                     self.__window.setWindowTitle(
-                        f"{os.path.normpath(self.__window.api.activeWindow.activeView.getFile() or 'Untitled')} - {self.__window.appName}")
-                    if index >= 0: self.__window.encodingLabel.setText(self.__window.api.activeWindow.activeView.getEncoding())
+                        f"{os.path.normpath(self.__windowApi.activeWindow.activeView.getFile() or 'Untitled')} - {self.__window.appName}")
+                    if index >= 0: self.__window.encodingLabel.setText(self.__windowApi.activeWindow.activeView.getEncoding())
                     self.updateEncoding()
                 else:
                     self.__window.setWindowTitle(self.__window.appName)
 
-                view = self.__window.api.View(self.__window.api, self.__window, qwclass=self.__window.tabWidget.currentWidget())
+                view = self.__windowApi.View(self.__windowApi, self.__window, qwclass=self.__window.tabWidget.currentWidget())
                 view.id = self.__window.tabWidget.currentWidget().objectName().split("-")[-1]
-                for v in self.__window.api.activeWindow.views:
+                for v in self.__windowApi.activeWindow.views:
                     if v == view:
-                        self.__window.api.activeWindow.activeView = v
+                        self.__windowApi.activeWindow.activeView = v
                         break
                 self.tabChanged.emit()
             except: pass
 
         def updateEncoding(self):
-            e = self.__window.api.activeWindow.activeView.getEncoding()
+            e = self.__windowApi.activeWindow.activeView.getEncoding()
             self.__window.encodingLabel.setText(e)
 
         def onDoubleClicked(self, index):
@@ -938,6 +892,13 @@ class VtAPI:
                 return None
 
             def window(self):
+                return None
+        
+        class Thread(QtCore.QThread):
+            def __init__(self, parent = ...):
+                super().__init__(parent)
+            
+            def parent(self):
                 return None
 
     def activeWindow(self) -> Window:
@@ -1040,11 +1001,3 @@ class VtAPI:
 
     def installed_packagesPath(self):
         return "/path/to/installed/packages"
-
-class CloseTabCommand(VtAPI.Plugin.WindowCommand):
-    def run(self, view=None):
-        if not view:
-            view = self.window.activeView
-        for v in self.window.views:
-            if v == view:
-                v.close()

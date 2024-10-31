@@ -267,13 +267,14 @@ class TextEdit(QtWidgets.QTextEdit):
             self.completer.setWidget(self)
         QtWidgets.QTextEdit.focusInEvent(self, event)
 
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event: QtGui.QKeyEvent):
         tc = self.textCursor()
         if event.key() in {
             Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
             Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt
         } or event.modifiers() in {Qt.KeyboardModifier.ControlModifier, Qt.KeyboardModifier.ShiftModifier}:
             self.mw.keyPressEvent(event)
+            event.accept()
             return
         else:
             # self.mw.keyPressEvent(event)
