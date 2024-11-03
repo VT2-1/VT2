@@ -410,178 +410,20 @@ class TabWidget (QtWidgets.QTabWidget):
                 result = dlg.exec()
 
                 if result == QtWidgets.QMessageBox.StandardButton.Yes:
-                    self.MainWindow.api.activeWindow.runCommand({"command": "saveFile", "args": tab.file})
+                    self.MainWindow.api.activeWindow.runCommand({"command": "SaveFileCommand", "args": [tab.file]})
+                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
+                    self.MainWindow.api.activeWindow.views.remove(self.MainWindow.api.activeWindow.activeView)
                     tab.deleteLater()
                     self.removeTab(currentIndex)
-                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(currentIndex, tab.file)
                 elif result == QtWidgets.QMessageBox.StandardButton.No:
+                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
+                    self.MainWindow.api.activeWindow.views.remove(self.MainWindow.api.activeWindow.activeView)
                     tab.deleteLater()
                     self.removeTab(currentIndex)
-                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(currentIndex, tab.file)
                 elif result == QtWidgets.QMessageBox.StandardButton.Cancel:
                     pass
             else:
+                self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
+                self.MainWindow.api.activeWindow.views.remove(self.MainWindow.api.activeWindow.activeView)
                 tab.deleteLater()
                 self.removeTab(currentIndex)
-                self.MainWindow.api.activeWindow.signals.tabClosed.emit(currentIndex, tab.file)
-
-class PackageManager(QtWidgets.QDialog):
-    def __init__(self, window, packagesDir):
-        super().__init__(window)
-        self.window = window
-        self.packagesDir = packagesDir
-        self.tempDir = os.getenv("TEMP")
-
-        self.setObjectName("PackageManager")
-        self.resize(800, 600)
-        self.mainLayout = QtWidgets.QVBoxLayout(self)
-
-        self.tabWidget = QtWidgets.QTabWidget(parent=self)
-        self.tabWidget.setTabPosition(QtWidgets.QTabWidget.TabPosition.West)
-        self.tabWidget.setObjectName("tabWidget")
-
-        self.createPluginTab()
-        self.createThemeTab()
-
-        self.tabWidget.addTab(self.pluginTab, "Plugins")
-        self.tabWidget.addTab(self.themeTab, "Themes")
-        self.mainLayout.addWidget(self.tabWidget)
-        self.setLayout(self.mainLayout)
-
-    def createPluginTab(self):
-        self.pluginTab = QtWidgets.QWidget()
-        self.l = QtWidgets.QVBoxLayout(self.pluginTab)
-        self.scrollArea = QtWidgets.QScrollArea()
-        self.scrollArea.setWidgetResizable(True)
-        self.scrollAreaWidgetContents = QtWidgets.QWidget()
-        self.l.addWidget(self.scrollArea)
-        self.scrollArea.setWidget(self.scrollAreaWidgetContents)
-        self.scrollAreaLayout = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents)
-        return self.pluginTab
-
-    def createThemeTab(self):
-        self.themeTab = QtWidgets.QWidget()
-        self.l2 = QtWidgets.QVBoxLayout(self.themeTab)
-        self.scrollArea2 = QtWidgets.QScrollArea()
-        self.scrollArea2.setWidgetResizable(True)
-        self.scrollAreaWidgetContents2 = QtWidgets.QWidget()
-        self.l2.addWidget(self.scrollArea2)
-        self.scrollArea2.setWidget(self.scrollAreaWidgetContents2)
-        self.scrollAreaLayout2 = QtWidgets.QVBoxLayout(self.scrollAreaWidgetContents2)
-        return self.themeTab
-
-    def addCard(self, l, c, url, name):
-        widget = QtWidgets.QWidget(parent=c)
-        widget.setMaximumSize(QtCore.QSize(16777215, 100))
-        cardLayout = QtWidgets.QHBoxLayout(widget)
-
-        cardTextLayout = QtWidgets.QVBoxLayout()
-        nameLbl = QtWidgets.QLabel(name)
-        repoLbl = QtWidgets.QLabel(f"<html><head/><body><p><span style=\" font-weight:600; font-style:italic; color:#383838;\">{url}</span></p></body></html>")
-        descriptLbl = QtWidgets.QLabel("This is a description of the Plugin")
-
-        cardTextLayout.addWidget(nameLbl)
-        cardTextLayout.addWidget(repoLbl)
-        cardTextLayout.addWidget(descriptLbl)
-        
-        cardLayout.addLayout(cardTextLayout)
-
-        pushButton = QtWidgets.QPushButton("Download", parent=widget)
-        pushButton.clicked.connect(lambda: self.install(url))
-        cardLayout.addWidget(pushButton)
-
-        l.addWidget(widget)
-
-    def install(self, url, site="github"):
-        try:
-            tempdirName = self.tempname(8)
-            path = os.path.join(self.tempDir or os.path.dirname(__file__), tempdirName)
-            os.makedirs(path)
-
-            filePath = os.path.join(path, "package.zip")
-            if site == "github":
-                urllib.request.urlretrieve(url + "/zipball/master", filePath)
-            else:
-                urllib.request.urlretrieve(url, filePath)
-
-            with zipfile.ZipFile(filePath, 'r') as f:
-                f.extractall(path)
-            os.remove(filePath)
-
-            extracted_dir = next(
-                os.path.join(path, d) for d in os.listdir(path)
-                if os.path.isdir(os.path.join(path, d))
-            )
-
-            finalPackageDir = os.path.join(self.packagesDir, url.split("/")[-1])
-            os.makedirs(self.packagesDir, exist_ok=True)
-
-            shutil.move(extracted_dir, finalPackageDir)
-            shutil.rmtree(path)
-
-            self.checkReqs(finalPackageDir)
-        except Exception as e:
-            print(e)
-
-    def tempname(self, n):
-        return "vt-" + str(uuid.uuid4())[:n + 1] + "-install"
-
-    def installModule(self, packages: str):
-        import pip
-        pip.main(["install", packages])
-
-    def checkReqs(self, data):
-        for url in data:
-            if not os.path.isdir(os.path.join(self.packagesDir, url.split("/")[-1])):
-                self.install(url)
-
-    def uninstall(self, name):
-        dir_path = os.path.join(self.packagesDir, name)
-        if os.path.isdir(dir_path):
-            shutil.rmtree(dir_path)
-
-    def search(self, name):
-        dir_path = os.path.join(self.packagesDir, name)
-        return dir_path if os.path.isdir(dir_path) else ""
-
-    def updateRepos(self):
-        update_url = "http://127.0.0.1:8000/update"
-        zip_path = os.path.join(self.window.cacheDir, "plugins.zip")
-        urllib.request.urlretrieve(update_url, zip_path)
-
-        with zipfile.ZipFile(zip_path, 'r') as f:
-            f.extractall(self.window.cacheDir)
-        os.remove(zip_path)
-
-        self.processPlugins()
-        self.processThemes()
-
-    def processPlugins(self):
-        plugins_dir = os.path.join(self.window.cacheDir, "plugins")
-        for pl in os.listdir(plugins_dir):
-            with open(os.path.join(plugins_dir, pl), "r") as f:
-                try:
-                    data = json.load(f)
-                    if all(k in data for k in ("apiVersion", "repo", "name")):
-                        if "platform" in data and self.window.api.platform() not in data["platform"]:
-                            continue
-                        if "requirements" in data:
-                            try: self.checkReqs(data["requirements"])
-                            except: pass
-                        if "modules" in data:
-                            try: self.installModule(" ".join(data["modules"]))
-                            except: pass
-                        self.addCard(self.scrollAreaLayout, self.scrollAreaWidgetContents, data["repo"], name=data["name"])            
-                except Exception as e:
-                    self.window.api.activeWindow.setLogMsg(f"Error processing plugin {pl}: {e}")
-
-    def processThemes(self):
-        themes_dir = os.path.join(self.window.cacheDir, "themes")
-        for th in os.listdir(themes_dir):
-            with open(os.path.join(themes_dir, th), "r") as f:
-                try:
-                    data = json.load(f)
-                    if all(k in data for k in ("repo", "name")): 
-                        self.addCard(self.scrollAreaLayout2, self.scrollAreaWidgetContents2, data["repo"], name=data["name"])            
-                except Exception as e:
-                    self.window.api.App.setLogMsg(f"Error processing theme {th}: {e}")

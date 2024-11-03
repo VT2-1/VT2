@@ -1,5 +1,5 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-import os, sys, json, importlib, re, platform, inspect
+import os, sys, json, importlib, re, platform, inspect, asyncio
 import importlib.util
 import os, json
 import builtins
@@ -53,17 +53,17 @@ class PluginManager:
             self.dPath = os.getcwd()
             sys.path.insert(0, self.plugin_directory)
             for plugDir in os.listdir(self.plugin_directory):
-                fullPath = os.path.join(self.plugin_directory, plugDir)
-                os.chdir(fullPath)
-                if os.path.isdir(fullPath) and os.path.isfile(f"config.vt-conf"):
-                    self.initPlugin(os.path.join(fullPath, "config.vt-conf"))
+                self.fullPath = os.path.join(self.plugin_directory, plugDir)
+                os.chdir(self.fullPath)
+                if os.path.isdir(self.fullPath) and os.path.isfile(f"config.vt-conf"):
+                    self.initPlugin(os.path.join(self.fullPath, "config.vt-conf"))
                     if self.mainFile:
                         pyFile = self.mainFile
                         try:
                             with SafeImporter(BLOCKED):
                                 sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
                                 sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
-                                sys.path.insert(0, fullPath)
+                                sys.path.insert(0, self.fullPath)
                                 self.module = self.importModule(pyFile, self.name + "Plugin")
                                 if hasattr(self.module, "initAPI"):
                                     self.module.initAPI(self.__windowApi)
@@ -75,12 +75,6 @@ class PluginManager:
                             sys.path.pop(0)
                     if self.menuFile:
                         self.loadMenu(self.menuFile, module=self.module)
-                    if self.scFile:
-                        try:
-                            self.registerShortcuts(json.load(open(self.scFile, "r+")))
-                        except Exception as e:
-                            self.__windowApi.activeWindow.setLogMsg(
-                                f"Failed load shortcuts for '{self.name}' from '{self.scFile}': {e}")
 
         finally:
             os.chdir(self.dPath)
@@ -88,7 +82,7 @@ class PluginManager:
     def loadMenu(self, f, module=None):
         try:
             menuFile = json.load(open(f, "r+"))
-            localeDir = os.path.join(os.path.dirname(f), "locale")
+            localeDir = os.path.join(self.fullPath, "locale")
             if os.path.isdir(localeDir): self.__window.translate(localeDir)
             for menu in menuFile:
                 if menu == "menuBar" or menu == "mainMenu":
@@ -107,7 +101,6 @@ class PluginManager:
         self.version = config.get('version', '1.0')
         self.mainFile = config.get('main', '')
         self.menuFile = config.get('menu', '')
-        self.scFile = config.get('sc', '')
 
     def parseMenu(self, data, parent, pl=None, localemenu="MainMenu"):
         if isinstance(data, dict):
@@ -185,25 +178,6 @@ class PluginManager:
                 print(e)
         else:
             self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' not found")
-
-    def registerShortcuts(self, data):
-        for sh in data:
-            keys = sh.get("keys")
-            command = sh.get("command")
-            cmd_name = command.get("command")
-
-            if keys not in self.shortcuts:
-                action = QtGui.QAction(self.__window)
-                for key in keys:
-                    action.setShortcut(QtGui.QKeySequence(key))
-                    action.setStatusTip(key)
-                    self.shortcuts.append(key)
-
-                action.triggered.connect(lambda checked, cmd=command: self.executeCommand(cmd))
-                self.__window.addAction(action)
-                self.__windowApi.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' registered.")
-            else:
-                self.__windowApi.activeWindow.setLogMsg(f"Shortcut '{keys}' for function '{cmd_name}' already used.")
 
     def registerClass(self, data):
         commandClass = data.get("command")
@@ -343,15 +317,14 @@ class VtAPI:
 
         def newFile(self) -> 'VtAPI.View':
             self.__mw.addTab()
-            tab = self.__mw.tabWidget.currentWidget()
             return self.activeView
         
         def openFiles(self, files):
             """Use command with name 'OpenFileCommand'"""
-            self.__mw.pl.executeCommand({"command": "OpenFileCommand", "args": files})
+            self.runCommand({"command": "OpenFileCommand", "args": [files]})
         
-        def saveFile(self, view=None):
-            self.__mw.pl.executeCommand({"command": "saveFile"})
+        def saveFile(self, view=None, dlg=False):
+            self.runCommand({"command": "SaveFileCommand", "kwargs": {"dlg": dlg}})
         
         def activeView(self) -> 'VtAPI.View':
             return self.activeView
@@ -366,6 +339,9 @@ class VtAPI:
 
         def registerCommandClass(self, data):
             self.__mw.pl.registerClass(data)
+
+        def registerCommand(self, data):
+            self.__mw.pl.registerCommand(data)
 
         def runCommand(self, command):
             self.__mw.pl.executeCommand(command)
@@ -442,15 +418,6 @@ class VtAPI:
             for dock in dock_widgets:
                 if self.__mw.dockWidgetArea(dock) == area: return dock
 
-        def loadThemes(self, menu):
-            themeMenu = self.__mw.pl.findMenu(menu, "themes")
-            if themeMenu:
-                themes = []
-                for theme in os.listdir(self.__mw.themesDir):
-                    if os.path.isfile(os.path.join(self.__mw.themesDir, theme)):
-                        themes.append({"caption": theme, "command": {"command": f"SetThemeCommand", "kwargs": {"theme": theme}}})
-                self.updateMenu("themes", themes)
-
     class View:
         def __init__(self, api, window, qwclass=None, text="", syntaxFile=None, file_name=None, read_only=False):
             self.__api: VtAPI = api
@@ -484,7 +451,7 @@ class VtAPI:
             return hash(self.tabIndex())
 
         def tabIndex(self):
-            return self.__tabWidget.currentIndex()
+            return self.__tabWidget.indexOf(self.__tab)
 
         def close(self):
             return self.__tabWidget.closeTab(self.tabIndex())
@@ -734,11 +701,8 @@ class VtAPI:
             dlg = QtWidgets.QFileDialog.getSaveFileName()
             return dlg
 
-        def openDirDialog(self, e=None):
-            dlg = QtWidgets.QFileDialog.getExistingDirectory(
-                self.__window.treeView,
-                caption="VarTexter - Get directory",
-            )
+        def openDirDialog(e=None):
+            dlg = QtWidgets.QFileDialog.getExistingDirectory(caption="Get directory")
             return str(dlg)
 
     class Plugin:
@@ -820,12 +784,12 @@ class VtAPI:
             return False
 
     class Signals(QtCore.QObject):
-        commandsLoaded = QtCore.pyqtSignal()
-        tabClosed = QtCore.pyqtSignal(int, str)
+        tabClosed = QtCore.pyqtSignal(object)
         tabCreated = QtCore.pyqtSignal()
         tabChanged = QtCore.pyqtSignal()
         textChanged = QtCore.pyqtSignal()
         windowClosed = QtCore.pyqtSignal()
+        windowStarted = QtCore.pyqtSignal()
 
         treeWidgetClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
         treeWidgetDoubleClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
@@ -922,8 +886,9 @@ class VtAPI:
     def setTimeout(self, function, delay):
         QtCore.QTimer.singleShot(delay, function)
 
-    def setTimeout_async(self, function, delay):
-        self.setTimeout(function, delay)
+    async def setTimeout_async(self, function, delay):
+        await asyncio.sleep(delay / 1000)
+        function()
 
     def scoreSelector(self, location, scope):
         return 100

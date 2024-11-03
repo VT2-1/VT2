@@ -34,7 +34,8 @@ class Logger:
 
     def write(self, message):
         if message:
-            self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
+            if self.__window.logStdout:
+                self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
             self._stdout_backup.write(message)
 
     def flush(self):
@@ -99,6 +100,7 @@ class Ui_MainWindow(object):
         self.settings()
         self.api.packagesDir = self.packageDirs
         self.api.cacheDir = self.cacheDir
+        self.api.themesDir = self.themesDir
         self.logger = Logger(self.MainWindow)
         self.logger.log = "VarTexter window loading..."
 
@@ -146,6 +148,7 @@ class Ui_MainWindow(object):
     def translate(self, d):
         if os.path.isdir(d) and os.path.isfile(os.path.join(d, f"{self.locale}.vt-locale")):
             if self.translator.load(os.path.join(d, f"{self.locale}.vt-locale")):
+                print(os.path.join(d, f"{self.locale}.vt-locale"))
                 QtCore.QCoreApplication.installTranslator(self.translator)
 
     def showPackages(self):
@@ -169,19 +172,10 @@ class Ui_MainWindow(object):
             if not os.path.isdir(self.cacheDir): os.makedirs(self.cacheDir)
         self.MainWindow.appName = self.settData.get("appName")
         self.MainWindow.__version__ = self.settData.get("apiVersion")
+        self.logStdout = self.settData.get("logStdout")
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
         self.menuFile = self.api.replacePaths(os.path.join(self.packageDirs, self.settData.get("menu")))
-        self.hotKeysFile = self.api.replacePaths(os.path.join(self.packageDirs, self.settData.get("hotkeys")))
-        self.locale = self.settData.get("hotkeys")
         os.chdir(self.packageDirs)
-
-    def settingsHotKeys(self):
-        if os.path.isfile(self.hotKeysFile):
-            openFile = self.api.getCommand("openFile")
-            if openFile:
-                openFile.get("command")([self.hotKeysFile])
-            else:
-                QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. You can find file at {self.hotKeysFile}")
 
     def hideShowMinimap(self):
         tab = self.tabWidget.currentWidget()
@@ -198,9 +192,9 @@ class Ui_MainWindow(object):
 
     def dropEvent(self, event):
         files = [url.toLocalFile() for url in event.mimeData().urls()]
-        openFile = self.api.getCommand("openFile")
+        openFile = self.api.getCommand("OpenFileCommand")
         if openFile:
-            openFile.get("command")(files)
+            self.api.activeWindow.runCommand({"command": "OpenFileCommand", "kwargs": {"f": files}})
         else:
             QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.pluginsDir, 'Open&Save')}")
 
@@ -214,14 +208,16 @@ class Ui_MainWindow(object):
                 with open(stateFile, 'rb') as f:
                     packed_data = f.read()
                     self.tabLog = msgpack.unpackb(packed_data, raw=False)
-                    if self.tabLog.get("themeFile"): self.themeFile = self.tabLog.get("themeFile")
-                    if self.tabLog.get("locale"): self.locale = self.tabLog.get("locale")
-                    else:
-                        if self.locale == "auto":
-                            self.locale = self.defineLocale()
-                    self.api.activeWindow.setTheme(self.themeFile)
         except ValueError:
             self.logger.log += f"\nFailed to restore window state. No file found at {stateFile}"  
+            self.tabLog = {}
+        if self.tabLog.get("themeFile"): self.themeFile = self.tabLog.get("themeFile")
+        if self.tabLog.get("locale"): self.locale = self.tabLog.get("locale")
+        else: self.locale = self.settData.get("locale")
+        print(self.locale)
+        if self.locale == "auto":
+            self.locale = self.defineLocale()
+        self.api.activeWindow.setTheme(self.themeFile)
 
     def restoreWState(self):
         for tab in self.tabLog.get("tabs") or []:
@@ -243,27 +239,24 @@ class Ui_MainWindow(object):
     def saveWState(self):
         tabsInfo = {}
         tabs = tabsInfo["tabs"] = {}
-        i = self.api.activeWindow.activeView.tabIndex()
         tabsInfo["themeFile"] = self.themeFile
         tabsInfo["locale"] = self.locale
-        tabsInfo["activeTab"] = str(i)
+        if self.api.activeWindow.activeView and self.api.activeWindow.activeView in self.api.activeWindow.views: tabsInfo["activeTab"] = str(self.api.activeWindow.activeView.tabIndex())
         tabsInfo["splitterState"] = self.treeSplitter.saveState().data()
         stateFile = os.path.join(self.packageDirs, 'data.msgpack')
-        for idx in range(self.tabWidget.count()):
-            widget = self.tabWidget.widget(idx)
-            if widget and isinstance(widget, QtWidgets.QWidget):
-                cursor = self.api.activeWindow.activeView.getTextCursor()
-                start = cursor.selectionStart()
-                end = cursor.selectionEnd()
-                tabs[str(idx)] = {
-                    "name": self.api.activeWindow.activeView.getTitle(),
-                    "file": self.api.activeWindow.activeView.getFile(),
-                    "canSave": self.api.activeWindow.activeView.getCanSave(),
-                    "text": self.api.activeWindow.activeView.getText(),
-                    "saved": self.api.activeWindow.activeView.getSaved(),
-                    "selection": [start, end],
-                    "modified": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
+        for view in self.api.activeWindow.views:
+            cursor = view.getTextCursor()
+            start = cursor.selectionStart()
+            end = cursor.selectionEnd()
+            tabs[str(view.tabIndex())] = {
+                "name": view.getTitle(),
+                "file": view.getFile(),
+                "canSave": view.getCanSave(),
+                "text": view.getText(),
+                "saved": view.getSaved(),
+                "selection": [start, end],
+                "modified": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
         tabs = {str(idx): tabs[str(idx)] for idx in range(len(tabs))}
         if os.path.isfile(stateFile):
             mode = 'wb'
@@ -286,18 +279,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.windowInitialize()
 
         self.pl = PluginManager(self.pluginsDir, self)
-        # self.pl.registerCommand({"command": "hideShowMinimap"})
-        # self.pl.registerCommand({"command": "settingsHotKeys"})
-        # self.pl.registerCommand({"command": "argvParse"})
-        # self.pl.registerCommand({"command": "addTab"})
 
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
         if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
 
         self.pl.load_plugins()
-        self.api.activeWindow.loadThemes(self.menuBar())
-
-        if self.hotKeysFile and os.path.isfile(self.hotKeysFile): self.pl.registerShortcuts(json.load(open(self.hotKeysFile, "r+")))
+        self.api.activeWindow.signals.windowStarted.emit()
 
         self.restoreWState()
 
