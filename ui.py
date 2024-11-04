@@ -48,7 +48,7 @@ class Logger:
 class Ui_MainWindow(object):
     sys.path.insert(0, ".")
 
-    def setupUi(self, MainWindow, argv=[]):
+    def setupUi(self, MainWindow, argv=[], api=None):
         self.MainWindow: QtWidgets.QMainWindow = MainWindow
         self.appPath = os.path.basename(__file__)
         self.appPath = os.path.dirname(argv[0])
@@ -95,8 +95,8 @@ class Ui_MainWindow(object):
         self.statusbar.setObjectName("statusbar")
         self.statusbar.addPermanentWidget(self.encodingLabel)
         self.MainWindow.setStatusBar(self.statusbar)
-
-        self.api = VtAPI()
+        if not api: self.api = VtAPI()
+        else: self.api = api
         self.settings()
         self.api.appName = self.MainWindow.appName
         self.api.packagesDir = self.packageDirs
@@ -150,7 +150,6 @@ class Ui_MainWindow(object):
     def translate(self, d):
         if os.path.isdir(d) and os.path.isfile(os.path.join(d, f"{self.locale}.vt-locale")):
             if self.translator.load(os.path.join(d, f"{self.locale}.vt-locale")):
-                print(os.path.join(d, f"{self.locale}.vt-locale"))
                 QtCore.QCoreApplication.installTranslator(self.translator)
 
     def showPackages(self):
@@ -216,7 +215,6 @@ class Ui_MainWindow(object):
         if self.tabLog.get("themeFile"): self.themeFile = self.tabLog.get("themeFile")
         if self.tabLog.get("locale"): self.locale = self.tabLog.get("locale")
         else: self.locale = self.settData.get("locale")
-        print(self.locale)
         if self.locale == "auto":
             self.locale = self.defineLocale()
         self.api.activeWindow.setTheme(self.themeFile)
@@ -269,14 +267,19 @@ class Ui_MainWindow(object):
             f.write(packed_data)
         self.settFile.close()
 
+class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
+    def run(self):
+        w = MainWindow(restoreState=False)
+        w.show()
+
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
-    def __init__(self):
+    def __init__(self, api=None, restoreState=True):
         super().__init__()
 
         self.textContextMenu = QtWidgets.QMenu(self)
         self.tabBarContextMenu = QtWidgets.QMenu(self)
 
-        self.setupUi(self, self.argvParse())
+        self.setupUi(self, self.argvParse(), api)
         self.api.activeWindow = self.api.Window(self.api, qmwclass=self)
         self.windowInitialize()
 
@@ -286,15 +289,21 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
 
         self.pl.load_plugins()
+        self.api.activeWindow.registerCommandClass({"command": NewWindowCommand, "shortcut": "ctrl+shift+n"})
         self.api.activeWindow.signals.windowStarted.emit()
 
-        self.restoreWState()
+        if restoreState: self.restoreWState()
 
         self.api.activeWindow.setTreeWidgetDir("/")
 
-        openFileCommand = self.api.activeWindow.getCommand("openFile")
-        if openFileCommand:
-            openFileCommand.get("command")([sys.argv[1]] if len(sys.argv) > 1 else [], used=False)
+        self.api.activeWindow.openFiles([sys.argv[1]] if len(sys.argv) > 1 else [])
+        if self.api.activeWindow.activeView: self.api.activeWindow.activeView.update()
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        w = self.api.Window(self.api, qmwclass=self)
+        if w in self.api.windows:
+            self.api.activeWindow = w
 
     def argvParse(self):
         return sys.argv
@@ -331,15 +340,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             key_text = "Tab"
 
         action = self.pl.findActionShortcut(modifier_string + key_text)
-        if action:
-            print(action)
-            action.trigger()
+        if action: action.trigger()
 
 def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
     w.show()
-    if w.api.activeWindow.activeView: w.api.activeWindow.activeView.update()
     sys.exit(app.exec())
 
 if __name__ == "__main__":

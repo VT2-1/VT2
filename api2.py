@@ -299,8 +299,11 @@ class PluginManager:
             menu.clear()
 
 class VtAPI:
-    def __init__(self):
-        self.__app = QtWidgets.QApplication.instance()
+    def __init__(self, app=None):
+        try:
+            self.__app = QtWidgets.QApplication.instance()
+        except:
+            self.__app: QtWidgets.QApplication = app
         self.windows = []
         self.activeWindow: VtAPI.Window | None = None
 
