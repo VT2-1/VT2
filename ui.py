@@ -98,7 +98,9 @@ class Ui_MainWindow(object):
 
         self.api = VtAPI()
         self.settings()
+        self.api.appName = self.MainWindow.appName
         self.api.packagesDir = self.packageDirs
+        self.api.pluginsDir = self.pluginsDir
         self.api.cacheDir = self.cacheDir
         self.api.themesDir = self.themesDir
         self.logger = Logger(self.MainWindow)
@@ -336,7 +338,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 def main():
     app = QtWidgets.QApplication(sys.argv)
     w = MainWindow()
-    app.applicationName = w.appName
     w.show()
     if w.api.activeWindow.activeView: w.api.activeWindow.activeView.update()
     sys.exit(app.exec())

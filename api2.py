@@ -301,7 +301,6 @@ class PluginManager:
 class VtAPI:
     def __init__(self):
         self.__app = QtWidgets.QApplication.instance()
-        self.appName = self.__app.applicationName()
         self.windows = []
         self.activeWindow: VtAPI.Window | None = None
 
@@ -864,6 +863,10 @@ class VtAPI:
             
             def parent(self):
                 return None
+
+        class Process(QtCore.QProcess):
+            def __init__(self):
+                super().__init__()
 
     def activeWindow(self) -> Window:
         return self.activeWindow
