@@ -152,10 +152,6 @@ class Ui_MainWindow(object):
             if self.translator.load(os.path.join(d, f"{self.locale}.vt-locale")):
                 QtCore.QCoreApplication.installTranslator(self.translator)
 
-    def showPackages(self):
-        self.pl.pm.updateRepos()
-        self.pl.pm.exec()
-
     def settings(self):
         self.settFile = open(os.path.join(self.appPath, 'ui/Main.settings'), 'r+', encoding='utf-8')
         self.settData = json.load(self.settFile)
@@ -178,15 +174,6 @@ class Ui_MainWindow(object):
         self.menuFile = self.api.replacePaths(os.path.join(self.packageDirs, self.settData.get("menu")))
         os.chdir(self.packageDirs)
 
-    def hideShowMinimap(self):
-        tab = self.tabWidget.currentWidget()
-        if tab:
-            minimap = tab.textEdit.minimapScrollArea
-            if minimap.isHidden():
-                minimap.show()
-            else:
-                minimap.hide()
-
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
@@ -198,6 +185,9 @@ class Ui_MainWindow(object):
             self.api.activeWindow.runCommand({"command": "OpenFileCommand", "kwargs": {"f": files}})
         else:
             QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.pluginsDir, 'Open&Save')}")
+
+    def getCommand(self, name):
+        return getattr(sys.modules[__name__], name, None)
 
     def windowInitialize(self):
         [os.makedirs(dir) for dir in [self.themesDir, self.pluginsDir, self.uiDir] if not os.path.isdir(dir)]
@@ -226,6 +216,7 @@ class Ui_MainWindow(object):
             self.api.activeWindow.activeView.setSaved(tab.get("saved"))
             self.MainWindow.setWindowTitle(f"{self.api.activeWindow.activeView.getTitle()} - VarTexter2")
             self.api.activeWindow.activeView.setTextSelection(tab.get("selection")[0], tab.get("selection")[1])
+            self.api.activeWindow.activeView.setMmapHidden(tab.get("mmaphidden", 0))
         if self.tabLog.get("activeTab"):
             self.tabWidget.setCurrentIndex(int(self.tabLog.get("activeTab")))
         if self.tabLog.get("splitterState"): self.treeSplitter.restoreState(self.tabLog.get("splitterState"))
@@ -255,7 +246,8 @@ class Ui_MainWindow(object):
                 "text": view.getText(),
                 "saved": view.getSaved(),
                 "selection": [start, end],
-                "modified": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "modified": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "mmaphidden": view.isMmapHidden()
             }
         tabs = {str(idx): tabs[str(idx)] for idx in range(len(tabs))}
         if os.path.isfile(stateFile):
@@ -272,6 +264,10 @@ class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
         w = MainWindow(restoreState=False)
         w.show()
 
+class ShowHideMinimap(VtAPI.Plugin.TextCommand):
+    def run(self):
+        self.view.setMmapHidden(not self.view.isMmapHidden())
+
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
         super().__init__()
@@ -284,12 +280,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.windowInitialize()
 
         self.pl = PluginManager(self.pluginsDir, self)
-
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
         if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
 
         self.pl.load_plugins()
-        self.api.activeWindow.registerCommandClass({"command": NewWindowCommand, "shortcut": "ctrl+shift+n"})
+        # self.api.activeWindow.registerCommandClass({"command": NewWindowCommand, "shortcut": "ctrl+shift+n"})
+        # self.api.activeWindow.registerCommandClass({"command": ShowHideMinimap, "shortcut": "ctrl+d"})
         self.api.activeWindow.signals.windowStarted.emit()
 
         if restoreState: self.restoreWState()

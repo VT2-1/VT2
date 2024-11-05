@@ -69,7 +69,6 @@ class PluginManager:
                                     self.module.initAPI(self.__windowApi)
                                 sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                         except Exception as e:
-                            print(e)
                             self.__windowApi.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
                         finally:
                             sys.path.pop(0)
@@ -82,7 +81,7 @@ class PluginManager:
     def loadMenu(self, f, module=None):
         try:
             menuFile = json.load(open(f, "r+"))
-            localeDir = os.path.join(self.fullPath, "locale")
+            localeDir = os.path.join(self.fullPath if module else "", "locale")
             if os.path.isdir(localeDir): self.__window.translate(localeDir)
             for menu in menuFile:
                 if menu == "menuBar" or menu == "mainMenu":
@@ -162,7 +161,6 @@ class PluginManager:
                         new_checked_state = not action.isChecked()
                         action.setChecked(new_checked_state)
                 cl = c.get("command")
-                print(cl)
                 if issubclass(cl, VtAPI.Plugin.TextCommand):
                     c = cl(self.__windowApi, self.__windowApi.activeWindow.activeView)
                 elif issubclass(cl, VtAPI.Plugin.WindowCommand):
@@ -175,7 +173,6 @@ class PluginManager:
                     self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'")
             except Exception as e:
                 self.__windowApi.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
-                print(e)
         else:
             self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' not found")
 
@@ -235,7 +232,7 @@ class PluginManager:
                 self.__windowApi.activeWindow.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
         else:
             if not inspect.isclass(commandN):
-                command_func = getattr(sys.modules[__name__], commandN, None)
+                command_func = self.__window.getCommand(commandN)
             else:
                 command_func = commandN
             if command_func:
@@ -330,8 +327,8 @@ class VtAPI:
         
         def activeView(self) -> 'VtAPI.View':
             return self.activeView
-        
-        def views(self) -> list:
+
+        def views(self):
             return self.views
 
         def focus(self, view):
@@ -446,7 +443,6 @@ class VtAPI:
         def update(self):
             view = VtAPI.View(self.__api, self.window, qwclass=self.__tabWidget.currentWidget())
             view.id = self.__tabWidget.currentWidget().objectName().split("-")[-1]
-            print(type(self.window))
             self.window.focus(view)
 
         def __hash__(self):
@@ -619,6 +615,15 @@ class VtAPI:
 
         def rehighlite(self):
             self.__tab.textEdit.highLighter.rehighlight()
+
+        def setMmapHidden(self, b: bool):
+            if b:
+                self.__tab.textEdit.minimapScrollArea.hide()
+            else:
+                self.__tab.textEdit.minimapScrollArea.show()
+
+        def isMmapHidden(self) -> bool:
+            return self.__tab.textEdit.minimapScrollArea.isHidden()
 
     class Selection:
         def __init__(self, regions=None):
