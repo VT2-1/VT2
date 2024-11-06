@@ -472,7 +472,7 @@ class VtAPI:
             return text
 
         def setText(self, text):
-            self.__tab.textEdit.setText(text)
+            self.__tab.textEdit.safeSetText(text)
             return text
 
         def getFile(self):
@@ -531,7 +531,7 @@ class VtAPI:
                 cursor.setPosition(abs_position)
             else:
                 cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-            cursor.insertText(string)
+            textEdit.safeSetText(string, cursor)
             textEdit.setTextCursor(cursor)
         
         def erase(self, region):

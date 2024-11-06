@@ -243,9 +243,12 @@ class TextEdit(QtWidgets.QTextEdit):
         self.highLighter = StandartHighlighter(self.document())
         self.highLighter.setDocument(self.document())
 
-    def safeSetText(self, text):
+    def safeSetText(self, text, cursor=None):
         self.change_event = True
-        self.setText(text)
+        if not cursor:
+            self.setText(text)
+        else:
+            cursor.insertText(text)
         self.mw.api.activeWindow.signals.textChanged.emit()
         self.highLighter.rehighlight()
         self.change_event = False

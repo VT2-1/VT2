@@ -212,7 +212,11 @@ class Ui_MainWindow(object):
     def restoreWState(self):
         for tab in self.tabLog.get("tabs") or []:
             tab = self.tabLog.get("tabs").get(tab)
-            self.addTab(name=tab.get("name"), text=tab.get("text"), file=tab.get("file"), canSave=tab.get("canSave"))
+            self.addTab()
+            self.api.activeWindow.activeView.setTitle(tab.get("name"))
+            self.api.activeWindow.activeView.setFile(tab.get("file"))
+            self.api.activeWindow.activeView.setText(tab.get("text"))
+            self.api.activeWindow.activeView.setCanSave(tab.get("canSave"))
             self.api.activeWindow.activeView.setSaved(tab.get("saved"))
             self.MainWindow.setWindowTitle(f"{self.api.activeWindow.activeView.getTitle()} - VarTexter2")
             self.api.activeWindow.activeView.setTextSelection(tab.get("selection")[0], tab.get("selection")[1])
