@@ -1,8 +1,9 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
 import os, sys, json, importlib, re, platform, inspect, asyncio
 import importlib.util
-import os, json
+import os
 import builtins
+import traceback
 
 BLOCKED = [
     "PyQt6"
@@ -34,6 +35,7 @@ class BlockedQApplication:
 class PluginManager:
     def __init__(self, plugin_directory: str, w):
         self.plugin_directory = plugin_directory
+        self.plugins = {}
         self.__window: QtWidgets.QMainWindow = w
         self.__windowApi: VtAPI = self.__window.api
         self.__menu_map = {}
@@ -54,11 +56,19 @@ class PluginManager:
             sys.path.insert(0, self.plugin_directory)
             for plugDir in os.listdir(self.plugin_directory):
                 self.fullPath = os.path.join(self.plugin_directory, plugDir)
-                self.loadPlugin(self.fullPath)
+                self.plugins[plugDir] = self.fullPath
+
+            if self.plugins.get("Basic"):
+                self.loadPlugin("Basic")
+                self.plugins.pop("Basic")
+            
+            for pl in self.plugins:
+                self.loadPlugin(pl)
         finally:
             os.chdir(self.dPath)
 
-    def loadPlugin(self, fullPath):
+    def loadPlugin(self, name):
+        fullPath = self.plugins.get(name)
         os.chdir(fullPath)
         if os.path.isdir(fullPath) and os.path.isfile(f"config.vt-conf"):
             self.initPlugin(os.path.join(fullPath, "config.vt-conf"))
@@ -174,6 +184,7 @@ class PluginManager:
                 if out:
                     self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'")
             except Exception as e:
+                traceback.print_exc()
                 self.__windowApi.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
         else:
             self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' not found")
@@ -417,6 +428,7 @@ class VtAPI:
             self.on_hide = on_hide
 
             self.dialog = VtAPI.Widgets.Dialog(parent=self.__mw)
+            self.dialog.setWindowTitle(self.__api.appName)
             if self.flags:
                 self.dialog.setWindowFlags(self.flags)
             self.dialog.setFixedWidth(self.width)
@@ -615,7 +627,6 @@ class VtAPI:
 
         def setHighlighter(self, hl):
             self.__tab.textEdit.highLighter.highlightingRules = hl
-            print(self.__tab.textEdit.document().toPlainText())
 
         def rehighlite(self):
             self.__tab.textEdit.highLighter.rehighlight()
@@ -639,9 +650,9 @@ class VtAPI:
             self.tagBase.addTag(path, tag)
             self.__tab.frame.addTag(tag)
 
-        def removeTag(self, path, tag):
+        def removeTag(self, path, tag, show=False):
             self.tagBase.removeTag(path, tag)
-            self.__tab.frame.removeTag(tag)
+            self.__tab.frame.removeTag(tag, show)
 
     class Selection:
         def __init__(self, regions=None):
@@ -729,6 +740,27 @@ class VtAPI:
         def openDirDialog(title=None):
             dlg = QtWidgets.QFileDialog.getExistingDirectory(caption=title or "Get directory")
             return str(dlg)
+
+        def inputDialog(title=""):
+            dlg = QtWidgets.QDialog()
+            dlg.setWindowTitle(title)
+
+            layout = QtWidgets.QVBoxLayout(dlg)
+            
+            line_edit = QtWidgets.QLineEdit(dlg)
+            layout.addWidget(line_edit)
+            
+            ok_button = QtWidgets.QPushButton("OK", dlg)
+            layout.addWidget(ok_button)
+            
+            def accept_dialog():
+                dlg.accept()
+
+            ok_button.clicked.connect(accept_dialog)
+            
+            if dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+                return line_edit.text(), dlg
+            return None, dlg
 
     class Plugin:
         class TextCommand:

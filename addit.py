@@ -1,7 +1,6 @@
 from PyQt6 import QtCore, QtGui, QtWidgets
-from PyQt6.QtCore import pyqtSlot
 from PyQt6.QtWidgets import QCompleter
-from PyQt6.QtCore import QStringListModel, Qt
+from PyQt6.QtCore import QStringListModel, Qt, pyqtSlot
 from PyQt6.QtGui import QTextCursor
 
 from typing import List
@@ -459,22 +458,31 @@ class Tag(QtWidgets.QWidget):
 
 
 class TagContainer(QtWidgets.QFrame):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, api=None):
         super().__init__(parent)
         self.tags = []
-        self.visibleTags = 4
+        self.visibleTags = 3
         self.moreMenu = None
+
+        self.api=api
 
         self.layout = QtWidgets.QHBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(5)
 
-        self.moreButton = QtWidgets.QPushButton("...")
+        self.moreButton = QtWidgets.QToolButton()
         self.moreButton.setObjectName("moreTagsButton")
         self.moreButton.setFixedSize(20, 20)
         self.moreButton.clicked.connect(self.showMoreTags)
         self.moreButton.setVisible(False)
         self.layout.addWidget(self.moreButton)
+
+        self.addTagButton = QtWidgets.QPushButton()
+        self.addTagButton.setText("+")
+        self.addTagButton.setObjectName("addTagButton")
+        self.addTagButton.setFixedSize(20, 20)
+        self.addTagButton.clicked.connect(lambda: self.api.activeWindow.runCommand({"command": "AddTagCommand"}))
+        self.layout.addWidget(self.addTagButton)
 
     def addTag(self, text):
         if text in self.tags:
@@ -483,12 +491,12 @@ class TagContainer(QtWidgets.QFrame):
         self.tags.append(text)
         tagWidget = Tag(text, self.removeTag)
         tagWidget.setObjectName("fileTag")
-        self.layout.insertWidget(self.layout.count() - 1, tagWidget)
+        self.layout.insertWidget(self.layout.count() - 2, tagWidget)
         self.updateTagsDisplay()
 
     def removeTag(self, text, show=False):
         self.tags.remove(text)
-        for i in range(self.layout.count() - 1):
+        for i in range(self.layout.count() - 2):
             widget = self.layout.itemAt(i).widget()
             if widget and widget.text == text:
                 widget.setParent(None)
@@ -501,7 +509,7 @@ class TagContainer(QtWidgets.QFrame):
             self.showMoreTags()
 
     def updateTagsDisplay(self):
-        for i in range(self.layout.count() - 1):
+        for i in range(self.layout.count() - 2):
             widget = self.layout.itemAt(i).widget()
             if widget:
                 widget.setVisible(i < self.visibleTags)
@@ -525,7 +533,7 @@ class TagContainer(QtWidgets.QFrame):
             closeButton.setObjectName("tagCloseButton")
             closeButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_TitleBarCloseButton))
             closeButton.setMaximumSize(15, 15)
-            closeButton.clicked.connect(lambda checked, t=tag: self.removeTag(t, show=True))
+            closeButton.clicked.connect(lambda checked, t=tag: self.api.activeWindow.runCommand({"command": "RemoveTagCommand", "kwargs": {"tag": t, "show": True}}))
             tagLayout.addWidget(closeButton)
             
             actionWidget.setDefaultWidget(tagWidget)
@@ -615,7 +623,7 @@ class TagDB:
         cursor.execute("SELECT id FROM files WHERE filename = ?", (filename,))
         fileRow = cursor.fetchone()
         if not fileRow:
-            return []
+            self.addFile(filename)
         fileId = fileRow[0]
         cursor.execute("""
         SELECT tags.tag FROM tags

@@ -123,8 +123,7 @@ class Ui_MainWindow(object):
         self.verticalLayout = QtWidgets.QVBoxLayout(self.tab)
         self.verticalLayout.setObjectName("verticalLayout")
 
-        self.tab.frame = TagContainer(parent=self.tab)
-        self.tab.frame.addTag("tag1")
+        self.tab.frame = TagContainer(parent=self.tab, api=self.api)
         self.tab.frame.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
         self.tab.frame.setFrameShadow(QtWidgets.QFrame.Shadow.Raised)
         self.tab.frame.setObjectName("tabFrame")
@@ -273,17 +272,7 @@ class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
     def run(self):
         w = MainWindow(restoreState=False)
         w.show()
-
-class ShowHideMinimap(VtAPI.Plugin.TextCommand):
-    def run(self):
-        if self.view:
-            self.view.setMmapHidden(not self.view.isMmapHidden())
-
-class InitFileTagsCommand(VtAPI.Plugin.TextCommand):
-    def run(self, view):
-        if self.view.getFile():
-            self.view.initTagFile(self.view.getFile())
-
+    
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
         super().__init__()
@@ -301,7 +290,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
         if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
 
-        self.api.activeWindow.registerCommandClass({"command": InitFileTagsCommand})
+        # Commands register area
+
+        #####################################
 
         self.pl.loadPlugins()
 
