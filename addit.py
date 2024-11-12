@@ -1,10 +1,11 @@
-import platform, os, re, shutil, urllib.request, uuid, json, zipfile, pip
 from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtCore import pyqtSlot
-
 from PyQt6.QtWidgets import QCompleter
 from PyQt6.QtCore import QStringListModel, Qt
 from PyQt6.QtGui import QTextCursor
+
+from typing import List
+import sqlite3
 
 class MiniMap(QtWidgets.QTextEdit):
     def __init__(self, *args, **kwargs):
@@ -427,6 +428,200 @@ class TabWidget (QtWidgets.QTabWidget):
                     pass
             else:
                 self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
-                self.MainWindow.api.activeWindow.views.remove(self.MainWindow.api.activeWindow.activeView)
+                self.MainWindow.api.activeWindow.delView(self.MainWindow.api.activeWindow.activeView)
                 tab.deleteLater()
                 self.removeTab(currentIndex)
+
+class Tag(QtWidgets.QWidget):
+    def __init__(self, text, onClose, parent=None):
+        super().__init__(parent)
+        self.text = text
+        self.onClose = onClose
+        self.setObjectName("fileTag")
+
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(5, 0, 5, 0)
+        self.setStyleSheet("background-color: lightgrey; border-radius: 10px;")
+
+        self.label = QtWidgets.QLabel(text)
+        self.label.setObjectName("tagLabel")
+        layout.addWidget(self.label)
+
+        self.closeButton = QtWidgets.QPushButton()
+        self.closeButton.setObjectName("tagCloseButton")
+        self.closeButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_TitleBarCloseButton))
+        self.closeButton.setMaximumSize(15, 15)
+        self.closeButton.clicked.connect(self.closeTag)
+        layout.addWidget(self.closeButton)
+
+    def closeTag(self):
+        self.onClose(self.text)
+
+
+class TagContainer(QtWidgets.QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.tags = []
+        self.visibleTags = 4
+        self.moreMenu = None
+
+        self.layout = QtWidgets.QHBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(5)
+
+        self.moreButton = QtWidgets.QPushButton("...")
+        self.moreButton.setObjectName("moreTagsButton")
+        self.moreButton.setFixedSize(20, 20)
+        self.moreButton.clicked.connect(self.showMoreTags)
+        self.moreButton.setVisible(False)
+        self.layout.addWidget(self.moreButton)
+
+    def addTag(self, text):
+        if text in self.tags:
+            return
+
+        self.tags.append(text)
+        tagWidget = Tag(text, self.removeTag)
+        tagWidget.setObjectName("fileTag")
+        self.layout.insertWidget(self.layout.count() - 1, tagWidget)
+        self.updateTagsDisplay()
+
+    def removeTag(self, text, show=False):
+        self.tags.remove(text)
+        for i in range(self.layout.count() - 1):
+            widget = self.layout.itemAt(i).widget()
+            if widget and widget.text == text:
+                widget.setParent(None)
+                break
+
+        self.updateTagsDisplay()
+        if self.moreMenu:
+            self.moreMenu.close()
+        if show:
+            self.showMoreTags()
+
+    def updateTagsDisplay(self):
+        for i in range(self.layout.count() - 1):
+            widget = self.layout.itemAt(i).widget()
+            if widget:
+                widget.setVisible(i < self.visibleTags)
+        self.moreButton.setVisible(len(self.tags) > self.visibleTags)
+
+    def showMoreTags(self):
+        self.moreMenu = QtWidgets.QMenu()
+        for tag in self.tags:
+            actionWidget = QtWidgets.QWidgetAction(self.moreMenu)
+            actionWidget.setObjectName("menuTagAction")
+            tagWidget = QtWidgets.QWidget()
+            tagWidget.setObjectName("menuTag")
+            tagLayout = QtWidgets.QHBoxLayout(tagWidget)
+            tagLayout.setContentsMargins(5, 0, 5, 0)
+            
+            label = QtWidgets.QLabel(tag)
+            label.setObjectName("menuTagLabel")
+            tagLayout.addWidget(label)
+            
+            closeButton = QtWidgets.QPushButton()
+            closeButton.setObjectName("tagCloseButton")
+            closeButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_TitleBarCloseButton))
+            closeButton.setMaximumSize(15, 15)
+            closeButton.clicked.connect(lambda checked, t=tag: self.removeTag(t, show=True))
+            tagLayout.addWidget(closeButton)
+            
+            actionWidget.setDefaultWidget(tagWidget)
+            self.moreMenu.addAction(actionWidget)
+        
+        self.moreMenu.exec(self.moreButton.mapToGlobal(QtCore.QPoint(0, self.moreButton.height())))
+
+class TagDB:
+    def __init__(self, dbFile: str):
+        self.dbFile = dbFile
+        self._createTables()
+
+    def _createTables(self):
+        conn = sqlite3.connect(self.dbFile)
+        cursor = conn.cursor()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS files (
+            id INTEGER PRIMARY KEY,
+            filename TEXT UNIQUE NOT NULL
+        )""")
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tags (
+            id INTEGER PRIMARY KEY,
+            tag TEXT NOT NULL
+        )""")
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS file_tags (
+            file_id INTEGER,
+            tag_id INTEGER,
+            FOREIGN KEY (file_id) REFERENCES files(id),
+            FOREIGN KEY (tag_id) REFERENCES tags(id),
+            PRIMARY KEY (file_id, tag_id)
+        )""")
+        conn.commit()
+        print(cursor.execute("SELECT * FROM files"))
+        conn.close()
+
+    def addFile(self, filename: str):
+        conn = sqlite3.connect(self.dbFile)
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO files (filename) VALUES (?)", (filename,))
+        conn.commit()
+        conn.close()
+
+    def addTag(self, filename: str, tag: str):
+        conn = sqlite3.connect(self.dbFile)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM files WHERE filename = ?", (filename,))
+        fileRow = cursor.fetchone()
+        if not fileRow:
+            self.addFile(filename)
+            cursor.execute("SELECT id FROM files WHERE filename = ?", (filename,))
+            fileRow = cursor.fetchone()
+        fileId = fileRow[0]
+        cursor.execute("SELECT id FROM tags WHERE tag = ?", (tag,))
+        tagRow = cursor.fetchone()
+        if not tagRow:
+            cursor.execute("INSERT INTO tags (tag) VALUES (?)", (tag,))
+            conn.commit()
+            cursor.execute("SELECT id FROM tags WHERE tag = ?", (tag,))
+            tagRow = cursor.fetchone()
+        tagId = tagRow[0]
+        cursor.execute("INSERT OR IGNORE INTO file_tags (file_id, tag_id) VALUES (?, ?)", (fileId, tagId))
+        conn.commit()
+        conn.close()
+
+    def removeTag(self, filename: str, tag: str):
+        conn = sqlite3.connect(self.dbFile)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM files WHERE filename = ?", (filename,))
+        fileRow = cursor.fetchone()
+        if not fileRow:
+            return
+        fileId = fileRow[0]
+        cursor.execute("SELECT id FROM tags WHERE tag = ?", (tag,))
+        tagRow = cursor.fetchone()
+        if not tagRow:
+            return
+        tagId = tagRow[0]
+        cursor.execute("DELETE FROM file_tags WHERE file_id = ? AND tag_id = ?", (fileId, tagId))
+        conn.commit()
+        conn.close()
+
+    def getTagsForFile(self, filename: str) -> List[str]:
+        conn = sqlite3.connect(self.dbFile)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM files WHERE filename = ?", (filename,))
+        fileRow = cursor.fetchone()
+        if not fileRow:
+            return []
+        fileId = fileRow[0]
+        cursor.execute("""
+        SELECT tags.tag FROM tags
+        JOIN file_tags ON file_tags.tag_id = tags.id
+        WHERE file_tags.file_id = ?
+        """, (fileId,))
+        tags = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return tags

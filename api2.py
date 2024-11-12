@@ -48,35 +48,37 @@ class PluginManager:
         spec.loader.exec_module(module)
         return module
 
-    def load_plugins(self):
+    def loadPlugins(self):
         try:
             self.dPath = os.getcwd()
             sys.path.insert(0, self.plugin_directory)
             for plugDir in os.listdir(self.plugin_directory):
                 self.fullPath = os.path.join(self.plugin_directory, plugDir)
-                os.chdir(self.fullPath)
-                if os.path.isdir(self.fullPath) and os.path.isfile(f"config.vt-conf"):
-                    self.initPlugin(os.path.join(self.fullPath, "config.vt-conf"))
-                    if self.mainFile:
-                        pyFile = self.mainFile
-                        try:
-                            with SafeImporter(BLOCKED):
-                                sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
-                                sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
-                                sys.path.insert(0, self.fullPath)
-                                self.module = self.importModule(pyFile, self.name + "Plugin")
-                                if hasattr(self.module, "initAPI"):
-                                    self.module.initAPI(self.__windowApi)
-                                sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
-                        except Exception as e:
-                            self.__windowApi.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
-                        finally:
-                            sys.path.pop(0)
-                    if self.menuFile:
-                        self.loadMenu(self.menuFile, module=self.module)
-
+                self.loadPlugin(self.fullPath)
         finally:
             os.chdir(self.dPath)
+
+    def loadPlugin(self, fullPath):
+        os.chdir(fullPath)
+        if os.path.isdir(fullPath) and os.path.isfile(f"config.vt-conf"):
+            self.initPlugin(os.path.join(fullPath, "config.vt-conf"))
+            if self.mainFile:
+                pyFile = self.mainFile
+                try:
+                    with SafeImporter(BLOCKED):
+                        sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
+                        sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
+                        sys.path.insert(0, fullPath)
+                        self.module = self.importModule(pyFile, self.name + "Plugin")
+                        if hasattr(self.module, "initAPI"):
+                            self.module.initAPI(self.__windowApi)
+                        sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
+                except Exception as e:
+                    self.__windowApi.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
+                finally:
+                    sys.path.pop(0)
+            if self.menuFile:
+                self.loadMenu(self.menuFile, module=self.module)
 
     def loadMenu(self, f, module=None):
         try:
@@ -301,18 +303,18 @@ class VtAPI:
             self.__app = QtWidgets.QApplication.instance()
         except:
             self.__app: QtWidgets.QApplication = app
-        self.windows = []
+        self.__windows = []
         self.activeWindow: VtAPI.Window | None = None
 
     class Window:
-        def __init__(self, api, views=None, activeView=None, qmwclass: QtWidgets.QMainWindow | None =None):
+        def __init__(self, api, views=None, activeView=None, qmwclass: QtWidgets.QMainWindow | None = None):
             self.__api: VtAPI = api
             self.__mw: QtWidgets.QMainWindow = qmwclass
-            self.signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
-            self.views = views or []
+            self.__signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
+            self.__views = views or []
             self.activeView: VtAPI.View | None = activeView
 
-            self.__api.windows.append(self)
+            self.__api.addWindow(self)
 
         def newFile(self) -> 'VtAPI.View':
             self.__mw.addTab()
@@ -328,8 +330,19 @@ class VtAPI:
         def activeView(self) -> 'VtAPI.View':
             return self.activeView
 
+        @property
         def views(self):
-            return self.views
+            return tuple(self.__views)
+        
+        @property
+        def signals(self):
+            return self.__signals
+
+        def addView(self, view: "VtAPI.View"):
+            self.__views.append(view)
+
+        def delView(self, view: "VtAPI.View"):
+            self.__views.remove(view)
 
         def focus(self, view):
             if view in self.views:
@@ -345,11 +358,11 @@ class VtAPI:
         def runCommand(self, command):
             self.__mw.pl.executeCommand(command)
         
-        def showQuickPanel(self, items, on_select, on_highlight=None, flags=0, selected_index=-1):
-            print(f"Showing quick panel with items: {items}")
-        
-        def showInputPanel(self, prompt, initial_text, on_done, on_change=None, on_cancel=None):
-            print(f"Showing input panel with prompt: {prompt} and initial text: {initial_text}")
+        def addToolBar(self, items, flags=[]):
+            toolBar = QtWidgets.QToolBar()
+            for action in items:
+                if issubclass(action, QtGui.QAction):
+                    self.__mw.addAction(action)
         
         def getCommand(self, name):
             return self.__mw.pl.regCommands.get(name)
@@ -417,33 +430,35 @@ class VtAPI:
             for dock in dock_widgets:
                 if self.__mw.dockWidgetArea(dock) == area: return dock
 
+        def statusMessage(self, text, timeout=None):
+            self.__mw.statusbar.showMessage(text, timeout)
+
     class View:
-        def __init__(self, api, window, qwclass=None, text="", syntaxFile=None, file_name=None, read_only=False):
+        def __init__(self, api, window, qwclass=None):
             self.__api: VtAPI = api
-            self.window: VtAPI.Window = window
+            self.__window: VtAPI.Window = window
             self.__tab: QtWidgets.QWidget = qwclass
             if self.__tab:
                 self.id: str = self.__tab.objectName().split("-")[-1]
                 self.__tabWidget: QtWidgets.QTabWidget = self.__tab.parentWidget().parentWidget()
+                self.tagBase = self.__tabWidget.parent().parent().parent().tagBase
             else:
                 self.id = None
                 self.__tabWidget = None
-            self.text = text
-            self.syntaxFile = syntaxFile
-            self.file_name = file_name
-            self.read_only = read_only
-            self.tab_title = None
-            self.tab_encoding = None
+                self.tagBase = None
 
         def __eq__(self, other):
             if not isinstance(other, VtAPI.View):
                 return NotImplemented
             return self.id == other.id
         
+        def id(self):
+            return self.id
+
         def update(self):
-            view = VtAPI.View(self.__api, self.window, qwclass=self.__tabWidget.currentWidget())
+            view = VtAPI.View(self.__api, self.__window, qwclass=self.__tabWidget.currentWidget())
             view.id = self.__tabWidget.currentWidget().objectName().split("-")[-1]
-            self.window.focus(view)
+            self.window().focus(view)
 
         def __hash__(self):
             return hash(self.tabIndex())
@@ -455,7 +470,7 @@ class VtAPI:
             return self.__tabWidget.closeTab(self.tabIndex())
 
         def window(self):
-            return self.window
+            return self.__window
 
         def getTitle(self):
             return self.__tabWidget.tabText(self.__tabWidget.indexOf(self.__tab))
@@ -515,13 +530,10 @@ class VtAPI:
         def size(self):
             return len(self.__tab.textEdit.toPlainText())
 
-        def substr(self, region):
+        def substr(self, region: "VtAPI.Region"):
             return self.__tab.textEdit.toPlainText()[region.begin():region.end()]
 
-        def sel(self):
-            pass
-
-        def insert(self, string, point=None):
+        def insert(self, string, point: "VtAPI.Point"=None):
             textEdit = self.__tab.textEdit
             cursor = textEdit.textCursor()
             if point is not None:
@@ -534,11 +546,11 @@ class VtAPI:
             textEdit.safeSetText(string, cursor)
             textEdit.setTextCursor(cursor)
         
-        def erase(self, region):
+        def erase(self, region: "VtAPI.Region"):
             t = self.__tab.textEdit.toPlainText()
             self.__tab.textEdit.setPlainText(t[:region.begin()] + t[region.end():])
         
-        def replace(self, region, string):
+        def replace(self, region: "VtAPI.Region", string):
             t = self.__tab.textEdit.toPlainText()
             self.__tab.textEdit.setPlainText(t[:region.begin()] + string + t[region.end():])
 
@@ -560,20 +572,11 @@ class VtAPI:
         def selectAll(self):
             self.__tab.textEdit.selectAll()
 
-        def find(self, pattern, start_point, flags=0):
-            pass
-
-        def findAll(self, pattern, flags=0):
-            pass
-
-        def setSyntaxFile(self, syntaxFilePath):
-            self.syntaxFile = syntaxFilePath
-
-        def settings(self):
-            pass
-
-        def fileName(self):
-            return self.fileName
+        def setSyntax(self, data=None, path=None):
+            if path:
+                data = self.__api.loadSettings(path)
+            if data:
+                self.setHighlighter(data)
 
         def isDirty(self):
             return self.__window.tabWidget.isSaved(self.__tab)
@@ -594,7 +597,7 @@ class VtAPI:
             self.__tab.textEdit.setTextCursor(cursor)
 
         def getCompletePos(self):
-            current_text = self.__tab.textEdit.toPlainText()
+            current_text = self.__tab.textEdit.document().toPlainText()
             cursor_position = self.__tab.textEdit.textCursor().position()
 
             line_number = self.__tab.textEdit.textCursor().blockNumber()
@@ -612,6 +615,7 @@ class VtAPI:
 
         def setHighlighter(self, hl):
             self.__tab.textEdit.highLighter.highlightingRules = hl
+            print(self.__tab.textEdit.document().toPlainText())
 
         def rehighlite(self):
             self.__tab.textEdit.highLighter.rehighlight()
@@ -624,6 +628,20 @@ class VtAPI:
 
         def isMmapHidden(self) -> bool:
             return self.__tab.textEdit.minimapScrollArea.isHidden()
+        
+        def initTagFile(self, path):
+            if os.path.isfile(path): self.tagBase.addFile(path)
+
+        def getTags(self, path):
+            return self.tagBase.getTagsForFile(path)
+
+        def addTag(self, path, tag: str):
+            self.tagBase.addTag(path, tag)
+            self.__tab.frame.addTag(tag)
+
+        def removeTag(self, path, tag):
+            self.tagBase.removeTag(path, tag)
+            self.__tab.frame.removeTag(tag)
 
     class Selection:
         def __init__(self, regions=None):
@@ -676,21 +694,21 @@ class VtAPI:
             return key in self.settings
 
     class Dialogs:
-        def infoMessage(string):
-            QtWidgets.QMessageBox.information(None, "Message", string)
-        def warningMessage(string):
-            QtWidgets.QMessageBox.warning(None, "Warning", string)
-        def errorMessage(string):
-            QtWidgets.QMessageBox.critical(None, "Error", string)
+        def infoMessage(string, title=None):
+            QtWidgets.QMessageBox.information(None, title or "Message", string)
+        def warningMessage(string, title=None):
+            QtWidgets.QMessageBox.warning(None, title or "Warning", string)
+        def errorMessage(string, title=None):
+            QtWidgets.QMessageBox.critical(None, title or "Error", string)
 
-        def okCancelDialog(string):
-            result = QtWidgets.QMessageBox.question(None, "Confirmation", string,
+        def okCancelDialog(string, title=None):
+            result = QtWidgets.QMessageBox.question(None, title or "Confirmation", string,
                                         QtWidgets.QMessageBox.StandardButton.Ok | QtWidgets.QMessageBox.StandardButton.Cancel,
                                         QtWidgets.QMessageBox.StandardButton.Cancel)
             return result == QtWidgets.QMessageBox.StandardButton.Ok
 
-        def yesNoCancelDialog(string):
-            result = QtWidgets.QMessageBox.question(None, "Confirmation", string,
+        def yesNoCancelDialog(string, title=None):
+            result = QtWidgets.QMessageBox.question(None, title or "Confirmation", string,
                                         QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No | QtWidgets.QMessageBox.StandardButton.Cancel,
                                         QtWidgets.QMessageBox.StandardButton.Cancel)
             if result == QtWidgets.QMessageBox.StandardButton.Yes:
@@ -700,16 +718,16 @@ class VtAPI:
             else:
                 return "cancel"
 
-        def openFileDialog(e=None):
-            dlg = QtWidgets.QFileDialog.getOpenFileNames(None, "Open File", "", "All Files (*);;Text Files (*.txt)")
+        def openFileDialog(title=None):
+            dlg = QtWidgets.QFileDialog.getOpenFileNames(None, title or "Open File", "", "All Files (*);;Text Files (*.txt)")
             return dlg
 
-        def saveFileDialog(e=None):
-            dlg = QtWidgets.QFileDialog.getSaveFileName()
+        def saveFileDialog(title=None):
+            dlg = QtWidgets.QFileDialog.getSaveFileName(caption=title or "Save File")
             return dlg
 
-        def openDirDialog(e=None):
-            dlg = QtWidgets.QFileDialog.getExistingDirectory(caption="Get directory")
+        def openDirDialog(title=None):
+            dlg = QtWidgets.QFileDialog.getExistingDirectory(caption=title or "Get directory")
             return str(dlg)
 
     class Plugin:
@@ -794,13 +812,24 @@ class VtAPI:
         tabClosed = QtCore.pyqtSignal(object)
         tabCreated = QtCore.pyqtSignal()
         tabChanged = QtCore.pyqtSignal()
+
         textChanged = QtCore.pyqtSignal()
+
         windowClosed = QtCore.pyqtSignal()
         windowStarted = QtCore.pyqtSignal()
+
+        logWrited = QtCore.pyqtSignal(str)
 
         treeWidgetClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
         treeWidgetDoubleClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
         treeWidgetActivated = QtCore.pyqtSignal()
+
+        fileOpened = QtCore.pyqtSignal(object)
+        fileSaved = QtCore.pyqtSignal(object)
+        fileTagInited = QtCore.pyqtSignal(object)
+
+        fileTagAdded = QtCore.pyqtSignal(object, str)
+        fileTagRemoved = QtCore.pyqtSignal(object, str)
 
         def __init__(self, w):
             super().__init__(w)
@@ -809,6 +838,15 @@ class VtAPI:
 
             self.__window.treeView.doubleClicked.connect(self.onDoubleClicked)
             self.__window.tabWidget.currentChanged.connect(self.tabChngd)
+
+        def addSignal(self, signalName: str, signalArgs: list):
+            signalType = [arg for arg in signalArgs]
+            signal = QtCore.pyqtSignal(*signalType)
+            
+            setattr(self, signalName, signal)
+
+        def findSignal(self, signalName: str):
+            return getattr(self, signalName)
 
         def tabChngd(self, index):
             try:
@@ -879,20 +917,31 @@ class VtAPI:
     def activeWindow(self) -> Window:
         return self.activeWindow
 
+    @property
     def windows(self):
-        return self.windows
+        return tuple(self.__windows)
+    
+    def addWindow(self, window: Window):
+        self.__windows.append(window)
 
-    def loadSettings(self, name):
-        pass
+    def loadSettings(self, path=None, pl=None):
+        if pl and not path:
+            path = os.path.dirname(pl)
+        if os.path.isfile(path):
+            with open(path, "r+") as f:
+                return json.load(f)
+        else:
+            return {}
 
-    def saveSettings(self, name):
-        pass
+    def saveSettings(self, data, path=None, pl=None):
+        if pl and not path:
+            path = os.path.dirname(pl)
+        if os.path.isfile(path):
+            with open(path, "r+") as f:
+                json.dump(data, f)
 
     def importModule(self, name):
         return importlib.import_module(name)
-
-    def statusMessage(self, string):
-        print(f"Status: {string}")
 
     def setTimeout(self, function, delay):
         QtCore.QTimer.singleShot(delay, function)
@@ -900,9 +949,6 @@ class VtAPI:
     async def setTimeout_async(self, function, delay):
         await asyncio.sleep(delay / 1000)
         function()
-
-    def scoreSelector(self, location, scope):
-        return 100
 
     def version(self):
         return "4.0"
@@ -966,14 +1012,5 @@ class VtAPI:
     def defineLocale(self):
         return QtCore.QLocale.system().name().split("_")[0]
 
-    def baseDirPath(self):
-        return ""
-
-    def fileDirPath(self):
-        return ""
-
     def packagesPath(self):
-        return "/"
-
-    def installed_packagesPath(self):
-        return "/path/to/installed/packages"
+        return self.packagesDir

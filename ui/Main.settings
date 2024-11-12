@@ -8,5 +8,6 @@
     },
     "menu": "Ui/Main.vt-menu",
     "logStdout": false,
+    "saveState": true,
     "locale": "ru"
 }
