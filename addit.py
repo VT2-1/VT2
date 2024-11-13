@@ -2,6 +2,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 from PyQt6.QtWidgets import QCompleter
 from PyQt6.QtCore import QStringListModel, Qt, pyqtSlot
 from PyQt6.QtGui import QTextCursor
+from PyQt6.QtSql import QSqlDatabase, QSqlQuery
 
 from typing import List
 import sqlite3
@@ -534,22 +535,32 @@ class TagContainer(QtWidgets.QFrame):
 class TagDB:
     def __init__(self, dbFile: str):
         self.dbFile = dbFile
-        self._createTables()
+        self.db = QSqlDatabase.addDatabase('QSQLITE')
+        self.db.setDatabaseName(dbFile)
+        if not self.db.open():
+            print(f"Ошибка при подключении к базе данных: {self.db.lastError().text()}")
+        else:
+            self._createTables()
 
     def _createTables(self):
-        conn = sqlite3.connect(self.dbFile)
-        cursor = conn.cursor()
-        cursor.execute("""
+        query = QSqlQuery(self.db)
+        query.prepare("""
         CREATE TABLE IF NOT EXISTS files (
             id INTEGER PRIMARY KEY,
             filename TEXT UNIQUE NOT NULL
         )""")
-        cursor.execute("""
+        if not query.exec():
+            print(f"Ошибка создания таблицы files: {query.lastError().text()}")
+        
+        query.prepare("""
         CREATE TABLE IF NOT EXISTS tags (
             id INTEGER PRIMARY KEY,
             tag TEXT NOT NULL
         )""")
-        cursor.execute("""
+        if not query.exec():
+            print(f"Ошибка создания таблицы tags: {query.lastError().text()}")
+        
+        query.prepare("""
         CREATE TABLE IF NOT EXISTS file_tags (
             file_id INTEGER,
             tag_id INTEGER,
@@ -557,68 +568,131 @@ class TagDB:
             FOREIGN KEY (tag_id) REFERENCES tags(id),
             PRIMARY KEY (file_id, tag_id)
         )""")
-        conn.commit()
-        conn.close()
+        if not query.exec():
+            print(f"Ошибка создания таблицы file_tags: {query.lastError().text()}")
 
     def addFile(self, filename: str):
-        conn = sqlite3.connect(self.dbFile)
-        cursor = conn.cursor()
-        cursor.execute("INSERT OR IGNORE INTO files (filename) VALUES (?)", (filename,))
-        conn.commit()
-        conn.close()
+        query = QSqlQuery(self.db)
+        query.prepare("INSERT OR IGNORE INTO files (filename) VALUES (?)")
+        query.addBindValue(filename)
+        if not query.exec():
+            print(f"Ошибка добавления файла: {query.lastError().text()}")
 
     def addTag(self, filename: str, tag: str):
-        conn = sqlite3.connect(self.dbFile)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM files WHERE filename = ?", (filename,))
-        fileRow = cursor.fetchone()
-        if not fileRow:
+        query = QSqlQuery(self.db)
+
+        # Проверяем, существует ли файл в базе данных
+        query.prepare("SELECT id FROM files WHERE filename = ?")
+        query.addBindValue(filename)
+        if not query.exec():
+            print(f"Ошибка выполнения запроса: {query.lastError().text()}")
+            return
+        if query.next():
+            fileId = query.value(0)
+        else:
+            # Добавляем файл, если его нет в базе
             self.addFile(filename)
-            cursor.execute("SELECT id FROM files WHERE filename = ?", (filename,))
-            fileRow = cursor.fetchone()
-        fileId = fileRow[0]
-        cursor.execute("SELECT id FROM tags WHERE tag = ?", (tag,))
-        tagRow = cursor.fetchone()
-        if not tagRow:
-            cursor.execute("INSERT INTO tags (tag) VALUES (?)", (tag,))
-            conn.commit()
-            cursor.execute("SELECT id FROM tags WHERE tag = ?", (tag,))
-            tagRow = cursor.fetchone()
-        tagId = tagRow[0]
-        cursor.execute("INSERT OR IGNORE INTO file_tags (file_id, tag_id) VALUES (?, ?)", (fileId, tagId))
-        conn.commit()
-        conn.close()
+            query.prepare("SELECT id FROM files WHERE filename = ?")
+            query.addBindValue(filename)
+            if not query.exec():
+                print(f"Ошибка выполнения запроса: {query.lastError().text()}")
+                return
+            query.next()
+            fileId = query.value(0)
+
+        # Проверяем, существует ли тег в базе данных
+        query.prepare("SELECT id FROM tags WHERE tag = ?")
+        query.addBindValue(tag)
+        if not query.exec():
+            print(f"Ошибка выполнения запроса: {query.lastError().text()}")
+            return
+        if query.next():
+            tagId = query.value(0)
+        else:
+            # Добавляем новый тег, если его нет в базе
+            query.prepare("INSERT INTO tags (tag) VALUES (?)")
+            query.addBindValue(tag)
+            if not query.exec():
+                print(f"Ошибка добавления тега: {query.lastError().text()}")
+                return
+            query.prepare("SELECT id FROM tags WHERE tag = ?")
+            query.addBindValue(tag)
+            if not query.exec():
+                print(f"Ошибка выполнения запроса: {query.lastError().text()}")
+                return
+            query.next()
+            tagId = query.value(0)
+
+        # Добавляем связь между файлом и тегом
+        query.prepare("INSERT OR IGNORE INTO file_tags (file_id, tag_id) VALUES (?, ?)")
+        query.addBindValue(fileId)
+        query.addBindValue(tagId)
+        if not query.exec():
+            print(f"Ошибка добавления связи: {query.lastError().text()}")
 
     def removeTag(self, filename: str, tag: str):
-        conn = sqlite3.connect(self.dbFile)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM files WHERE filename = ?", (filename,))
-        fileRow = cursor.fetchone()
-        if not fileRow:
+        query = QSqlQuery(self.db)
+
+        # Находим ID файла
+        query.prepare("SELECT id FROM files WHERE filename = ?")
+        query.addBindValue(filename)
+        if not query.exec():
+            print(f"Ошибка выполнения запроса: {query.lastError().text()}")
             return
-        fileId = fileRow[0]
-        cursor.execute("SELECT id FROM tags WHERE tag = ?", (tag,))
-        tagRow = cursor.fetchone()
-        if not tagRow:
+        if not query.next():
             return
-        tagId = tagRow[0]
-        cursor.execute("DELETE FROM file_tags WHERE file_id = ? AND tag_id = ?", (fileId, tagId))
-        conn.commit()
-        conn.close()
+        fileId = query.value(0)
+
+        # Находим ID тега
+        query.prepare("SELECT id FROM tags WHERE tag = ?")
+        query.addBindValue(tag)
+        if not query.exec():
+            print(f"Ошибка выполнения запроса: {query.lastError().text()}")
+            return
+        if not query.next():
+            return
+        tagId = query.value(0)
+
+        # Удаляем связь между файлом и тегом
+        query.prepare("DELETE FROM file_tags WHERE file_id = ? AND tag_id = ?")
+        query.addBindValue(fileId)
+        query.addBindValue(tagId)
+        if not query.exec():
+            print(f"Ошибка удаления связи: {query.lastError().text()}")
 
     def getTagsForFile(self, filename: str) -> List[str]:
-        conn = sqlite3.connect(self.dbFile)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM files WHERE filename = ?", (filename,))
-        fileRow = cursor.fetchone()
-        if not fileRow:
+        query = QSqlQuery(self.db)
+
+        # Получаем ID файла
+        query.prepare("SELECT id FROM files WHERE filename = ?")
+        query.addBindValue(filename)
+        if not query.exec():
+            print(f"Ошибка выполнения запроса: {query.lastError().text()}")
+            return []
+        if query.next():
+            fileId = query.value(0)
+        else:
             self.addFile(filename)
-        fileId = fileRow[0]
-        cursor.execute("""
+            query.prepare("SELECT id FROM files WHERE filename = ?")
+            query.addBindValue(filename)
+            if not query.exec():
+                print(f"Ошибка выполнения запроса: {query.lastError().text()}")
+                return []
+            query.next()
+            fileId = query.value(0)
+
+        # Получаем теги для файла
+        query.prepare("""
         SELECT tags.tag FROM tags
         JOIN file_tags ON file_tags.tag_id = tags.id
         WHERE file_tags.file_id = ?
-        """, (fileId,))
-        tags = [row[0] for row in cursor.fetchall()]
-        conn.close()
+        """)
+        query.addBindValue(fileId)
+        if not query.exec():
+            print(f"Ошибка выполнения запроса: {query.lastError().text()}")
+            return []
+
+        tags = []
+        while query.next():
+            tags.append(query.value(0))
         return tags

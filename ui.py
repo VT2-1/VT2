@@ -38,7 +38,7 @@ class Logger:
             if self.__window.logStdout:
                 self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
                 self.__window.api.activeWindow.signals.logWrited.emit(message)
-            self._stdout_backup.write(message)
+            # self._stdout_backup.write(message)
 
     def flush(self):
         pass
@@ -225,6 +225,8 @@ class Ui_MainWindow(object):
             self.MainWindow.setWindowTitle(f"{self.api.activeWindow.activeView.getTitle()} - VarTexter2")
             self.api.activeWindow.activeView.setTextSelection(tab.get("selection")[0], tab.get("selection")[1])
             self.api.activeWindow.activeView.setMmapHidden(tab.get("mmaphidden", 0))
+        self.api.activeWindow.setTreeWidgetDir(self.tabLog.get("openedDir", "/"))
+        if self.api.activeWindow.activeView:
             if self.api.activeWindow.activeView.getFile(): self.api.activeWindow.signals.fileOpened.emit(self.api.activeWindow.activeView)
         if self.tabLog.get("activeTab"):
             self.tabWidget.setCurrentIndex(int(self.tabLog.get("activeTab")))
@@ -241,6 +243,10 @@ class Ui_MainWindow(object):
         tabs = tabsInfo["tabs"] = {}
         tabsInfo["themeFile"] = self.themeFile
         tabsInfo["locale"] = self.locale
+        index = self.treeView.currentIndex()
+        if self.api.activeWindow.model.isDir(index):
+            tabsInfo["openedDir"] = self.api.activeWindow.model.filePath(index)
+        if self.api.activeWindow.activeView and self.api.activeWindow.activeView in self.api.activeWindow.views: tabsInfo["activeTab"] = str(self.api.activeWindow.activeView.tabIndex())
         if self.api.activeWindow.activeView and self.api.activeWindow.activeView in self.api.activeWindow.views: tabsInfo["activeTab"] = str(self.api.activeWindow.activeView.tabIndex())
         tabsInfo["splitterState"] = self.treeSplitter.saveState().data()
         stateFile = os.path.join(self.packageDirs, '.ws')
@@ -354,4 +360,8 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print("Err:", e)
+    
