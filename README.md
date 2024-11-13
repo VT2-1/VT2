@@ -1,3 +1,4 @@
+```
 # Клонирование репозитория
 git clone https://github.com/cherry220-v/VT2.git
 cd VT2
@@ -28,3 +29,4 @@ pyinstaller ui.spec
 
 # Запуск собранного приложения
 ./dist/ui
+```
