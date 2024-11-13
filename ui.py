@@ -297,11 +297,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.pl.loadPlugins()
 
         self.api.activeWindow.signals.windowStarted.emit()
-        self.api.activeWindow.signals.fileOpened.connect(lambda: self.api.activeWindow.runCommand({"command": "InitFileTagsCommand", "kwargs": {"view": self.api.activeWindow.activeView}}))
 
         if restoreState: self.restoreWState()
-
-        self.api.activeWindow.setTreeWidgetDir("/")
 
         self.api.activeWindow.openFiles([sys.argv[1]] if len(sys.argv) > 1 else [])
         if self.api.activeWindow.activeView: self.api.activeWindow.activeView.update()

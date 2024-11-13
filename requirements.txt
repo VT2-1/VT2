@@ -2,3 +2,4 @@ PyQt6
 msgpack
 datetime
 chardet
+pyinstaller
