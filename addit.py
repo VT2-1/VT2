@@ -303,17 +303,6 @@ class TextEdit(QtWidgets.QTextEdit):
         else:
             self.completer.popup().hide()
 
-    # def textEdited(self, text):
-    #     cursor_position = self.line_edit.cursorPosition()
-    #     line = self.line_edit.text().splitlines()[0]  # Берем первую строку
-    #     column = cursor_position  # Используем текущую позицию курсора
-    #
-    #     # Получаем дополнения из Jedi
-    #     completions = self.jedi_completer.get_completions(line, column)
-    #
-    #     # Обновляем completer
-    #     self.completer.update_completions(completions)
-
 class TabBar(QtWidgets.QTabBar):
     def __init__(self, tabwidget):
         super().__init__()
@@ -432,9 +421,10 @@ class TabWidget (QtWidgets.QTabWidget):
                 self.removeTab(currentIndex)
 
 class Tag(QtWidgets.QWidget):
-    def __init__(self, text, onClose, parent=None):
+    def __init__(self, text, onClose, api=None, parent=None):
         super().__init__(parent)
         self.text = text
+        self.api = api
         self.onClose = onClose
         self.setObjectName("fileTag")
 
@@ -442,7 +432,7 @@ class Tag(QtWidgets.QWidget):
         layout.setContentsMargins(5, 0, 5, 0)
         self.setStyleSheet("background-color: lightgrey; border-radius: 10px;")
 
-        self.label = QtWidgets.QLabel(text)
+        self.label = QtWidgets.QLabel(f"#{text}")
         self.label.setObjectName("tagLabel")
         layout.addWidget(self.label)
 
@@ -450,7 +440,7 @@ class Tag(QtWidgets.QWidget):
         self.closeButton.setObjectName("tagCloseButton")
         self.closeButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_TitleBarCloseButton))
         self.closeButton.setMaximumSize(15, 15)
-        self.closeButton.clicked.connect(self.closeTag)
+        self.closeButton.clicked.connect(lambda checked: self.api.activeWindow.runCommand({"command": "RemoveTagCommand", "kwargs": {"tag": self.label.text()[1:], "show": False}}))
         layout.addWidget(self.closeButton)
 
     def closeTag(self):
@@ -489,7 +479,7 @@ class TagContainer(QtWidgets.QFrame):
             return
 
         self.tags.append(text)
-        tagWidget = Tag(text, self.removeTag)
+        tagWidget = Tag(text, self.removeTag, api=self.api)
         tagWidget.setObjectName("fileTag")
         self.layout.insertWidget(self.layout.count() - 2, tagWidget)
         self.updateTagsDisplay()
@@ -568,7 +558,6 @@ class TagDB:
             PRIMARY KEY (file_id, tag_id)
         )""")
         conn.commit()
-        print(cursor.execute("SELECT * FROM files"))
         conn.close()
 
     def addFile(self, filename: str):

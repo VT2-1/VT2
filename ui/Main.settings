@@ -2,9 +2,9 @@
     "appName": "VT2",
     "apiVersion": 1.0,
     "packageDirs": {
-        "Windows": "%USERPROFILE%/Documents/VarTexter2",
-        "Linux": "%HOME%/.local/share/VarTexter2",
-        "OSX": "%HOME%/Library/Application Support/VarTexter2"
+        "Windows": "%USERPROFILE%/Documents/VT2",
+        "Linux": "%HOME%/.local/share/VT2",
+        "OSX": "%HOME%/Library/Application Support/VT2"
     },
     "menu": "Ui/Main.vt-menu",
     "logStdout": false,
