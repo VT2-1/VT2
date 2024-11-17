@@ -88,12 +88,12 @@ class PluginManager:
                 finally:
                     sys.path.pop(0)
             if self.menuFile:
-                self.loadMenu(self.menuFile, module=self.module)
+                self.loadMenu(self.menuFile, module=self.module, path=fullPath)
 
-    def loadMenu(self, f, module=None):
+    def loadMenu(self, f, module=None, path=None):
         try:
             menuFile = json.load(open(f, "r+"))
-            localeDir = os.path.join(self.fullPath if module else "", "locale")
+            localeDir = os.path.join(path if module else "", "locale")
             if os.path.isdir(localeDir): self.__window.translate(localeDir)
             for menu in menuFile:
                 if menu == "menuBar" or menu == "mainMenu":
