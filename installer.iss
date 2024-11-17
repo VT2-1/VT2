@@ -46,14 +46,18 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 
 [Components]
-Name: "plugins"; Description: "Installs basic vt plugins"; Types: full compact custom
+Name: "plbasic"; Description: "Installs Basic VT Plugin"; Types: full compact custom
+Name: "plopensave"; Description: "Installs OpenSave VT Plugin"; Types: full custom
+Name: "plopendir"; Description: "Installs OpenDir VT Plugin"; Types: full custom
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
 Source: "C:\Users\Trash\VT2\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\Trash\Documents\VT2\Plugins\*"; DestDir: "{userdocs}\VT2\Plugins"; Components: plugins; Flags: ignoreversion recursesubdirs
+Source: "C:\Users\Trash\Documents\VT2\Plugins\Basic\*"; DestDir: "{userdocs}\VT2\Plugins\Basic"; Components: plbasic; Flags: ignoreversion recursesubdirs
+Source: "C:\Users\Trash\Documents\VT2\Plugins\OpenSave\*"; DestDir: "{userdocs}\VT2\Plugins\OpenSave"; Components: plopensave; Flags: ignoreversion recursesubdirs
+Source: "C:\Users\Trash\Documents\VT2\Plugins\OpenDir\*"; DestDir: "{userdocs}\VT2\Plugins\OpenDir"; Components: plopendir; Flags: ignoreversion recursesubdirs
 Source: "C:\Users\Trash\VT2\dist\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs
 Source: "C:\Users\Trash\VT2\dist\ui\*"; DestDir: "{app}\ui"; Flags: ignoreversion recursesubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files

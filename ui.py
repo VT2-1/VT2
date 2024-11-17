@@ -356,7 +356,6 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     api = VtAPI(app)
     w = MainWindow(api)
-    print(api.activeWindow.getCommand("ShowPMCommand"))
     sys.exit(app.exec())
 
 if __name__ == "__main__":

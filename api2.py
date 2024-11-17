@@ -650,7 +650,8 @@ class VtAPI:
             self.tagBase.addTag(path, tag)
             self.__tab.frame.addTag(tag)
 
-        def removeTag(self, path, tag, show=False):
+        def removeTag(self, path=None, tag=None, show=False):
+            if not path: path = self.getFile()
             self.tagBase.removeTag(path, tag)
             self.__tab.frame.removeTag(tag, show)
         
