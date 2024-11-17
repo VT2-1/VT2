@@ -319,13 +319,13 @@ class VtAPI:
 
     class Window:
         def __init__(self, api, views=None, activeView=None, qmwclass: QtWidgets.QMainWindow | None = None):
-            self.__api: VtAPI = api
+            self.api: VtAPI = api
             self.__mw: QtWidgets.QMainWindow = qmwclass
             self.__signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
             self.__views = views or []
             self.activeView: VtAPI.View | None = activeView
 
-            self.__api.addWindow(self)
+            self.api.addWindow(self)
 
         def newFile(self) -> 'VtAPI.View':
             self.__mw.addTab()
@@ -354,6 +354,9 @@ class VtAPI:
 
         def delView(self, view: "VtAPI.View"):
             self.__views.remove(view)
+
+        def setTitle(self, s):
+            self.__mw.setWindowTitle(f"{s} - {self.api.appName}")
 
         def focus(self, view):
             if view in self.views:
@@ -428,7 +431,7 @@ class VtAPI:
             self.on_hide = on_hide
 
             self.dialog = VtAPI.Widgets.Dialog(parent=self.__mw)
-            self.dialog.setWindowTitle(self.__api.appName)
+            self.dialog.setWindowTitle(self.api.appName)
             if self.flags:
                 self.dialog.setWindowFlags(self.flags)
             self.dialog.setFixedWidth(self.width)
@@ -447,7 +450,7 @@ class VtAPI:
 
     class View:
         def __init__(self, api, window, qwclass=None):
-            self.__api: VtAPI = api
+            self.api: VtAPI = api
             self.__window: VtAPI.Window = window
             self.__tab: QtWidgets.QWidget = qwclass
             if self.__tab:
@@ -468,7 +471,7 @@ class VtAPI:
             return self.id
 
         def update(self):
-            view = VtAPI.View(self.__api, self.__window, qwclass=self.__tabWidget.currentWidget())
+            view = VtAPI.View(self.api, self.__window, qwclass=self.__tabWidget.currentWidget())
             view.id = self.__tabWidget.currentWidget().objectName().split("-")[-1]
             self.window().focus(view)
 
@@ -586,7 +589,7 @@ class VtAPI:
 
         def setSyntax(self, data=None, path=None):
             if path:
-                data = self.__api.loadSettings(path)
+                data = self.api.loadSettings(path)
             if data:
                 self.setHighlighter(data)
 
@@ -892,18 +895,15 @@ class VtAPI:
                 for v in self.__windowApi.activeWindow.views:
                     if v == view:
                         self.__windowApi.activeWindow.activeView = v
-                        self.__windowApi.activeWindow.activeView.updateTags()
+                        self.__windowApi.activeWindow.setTitle(os.path.normpath(self.__windowApi.activeWindow.activeView.getFile() or 'Untitled'))
+                        self.updateEncoding()
                         break
-
-                if index > -1 and self.__windowApi.activeWindow.activeView:
-                    self.__window.setWindowTitle(
-                        f"{os.path.normpath(self.__windowApi.activeWindow.activeView.getFile() or 'Untitled')} - {self.__window.appName}")
-                    if index >= 0: self.__window.encodingLabel.setText(self.__windowApi.activeWindow.activeView.getEncoding())
-                    self.updateEncoding()
                 else:
                     self.__window.setWindowTitle(self.__window.appName)
                 self.tabChanged.emit()
-            except: pass
+            except Exception as e:
+                self.__window.setWindowTitle(self.__window.appName)
+                self.__windowApi.activeWindow.setLogMsg(f"Error when updating tabs: {e}")
 
         def updateEncoding(self):
             e = self.__windowApi.activeWindow.activeView.getEncoding()

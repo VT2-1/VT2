@@ -222,7 +222,7 @@ class Ui_MainWindow(object):
             self.api.activeWindow.activeView.setText(tab.get("text"))
             self.api.activeWindow.activeView.setCanSave(tab.get("canSave"))
             self.api.activeWindow.activeView.setSaved(tab.get("saved"))
-            self.MainWindow.setWindowTitle(f"{self.api.activeWindow.activeView.getTitle()} - VarTexter2")
+            self.api.activeWindow.setTitle(os.path.normpath(self.api.activeWindow.activeView.getFile() or 'Untitled'))
             self.api.activeWindow.activeView.setTextSelection(tab.get("selection")[0], tab.get("selection")[1])
             self.api.activeWindow.activeView.setMmapHidden(tab.get("mmaphidden", 0))
             if self.api.activeWindow.activeView.getFile(): self.api.activeWindow.signals.fileOpened.emit(self.api.activeWindow.activeView)
