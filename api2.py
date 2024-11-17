@@ -653,6 +653,9 @@ class VtAPI:
         def removeTag(self, path, tag, show=False):
             self.tagBase.removeTag(path, tag)
             self.__tab.frame.removeTag(tag, show)
+        
+        def getTagFiles(self, tag):
+            return self.tagBase.getFilesForTag(tag)
 
     class Selection:
         def __init__(self, regions=None):
@@ -881,7 +884,16 @@ class VtAPI:
             return getattr(self, signalName)
 
         def tabChngd(self, index):
+            widget = self.__window.tabWidget.currentWidget()
             try:
+                view = self.__windowApi.View(self.__windowApi, self.__window, qwclass=widget)
+                view.id = widget.objectName().split("-")[-1]
+                for v in self.__windowApi.activeWindow.views:
+                    if v == view:
+                        self.__windowApi.activeWindow.activeView = v
+                        self.__windowApi.activeWindow.activeView.updateTags()
+                        break
+
                 if index > -1 and self.__windowApi.activeWindow.activeView:
                     self.__window.setWindowTitle(
                         f"{os.path.normpath(self.__windowApi.activeWindow.activeView.getFile() or 'Untitled')} - {self.__window.appName}")
@@ -889,13 +901,6 @@ class VtAPI:
                     self.updateEncoding()
                 else:
                     self.__window.setWindowTitle(self.__window.appName)
-
-                view = self.__windowApi.View(self.__windowApi, self.__window, qwclass=self.__window.tabWidget.currentWidget())
-                view.id = self.__window.tabWidget.currentWidget().objectName().split("-")[-1]
-                for v in self.__windowApi.activeWindow.views:
-                    if v == view:
-                        self.__windowApi.activeWindow.activeView = v
-                        break
                 self.tabChanged.emit()
             except: pass
 
@@ -936,8 +941,8 @@ class VtAPI:
                 return None
         
         class Thread(QtCore.QThread):
-            def __init__(self, parent = ...):
-                super().__init__(parent)
+            def __init__(self):
+                super().__init__()
             
             def parent(self):
                 return None

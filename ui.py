@@ -38,7 +38,7 @@ class Logger:
             if self.__window.logStdout:
                 self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
                 self.__window.api.activeWindow.signals.logWrited.emit(message)
-            # self._stdout_backup.write(message)
+            self._stdout_backup.write(message)
 
     def flush(self):
         pass
@@ -225,9 +225,8 @@ class Ui_MainWindow(object):
             self.MainWindow.setWindowTitle(f"{self.api.activeWindow.activeView.getTitle()} - VarTexter2")
             self.api.activeWindow.activeView.setTextSelection(tab.get("selection")[0], tab.get("selection")[1])
             self.api.activeWindow.activeView.setMmapHidden(tab.get("mmaphidden", 0))
-        self.api.activeWindow.setTreeWidgetDir(self.tabLog.get("openedDir", "/"))
-        if self.api.activeWindow.activeView:
             if self.api.activeWindow.activeView.getFile(): self.api.activeWindow.signals.fileOpened.emit(self.api.activeWindow.activeView)
+        self.api.activeWindow.setTreeWidgetDir(self.tabLog.get("openedDir", "/"))
         if self.tabLog.get("activeTab"):
             self.tabWidget.setCurrentIndex(int(self.tabLog.get("activeTab")))
         if self.tabLog.get("splitterState"): self.treeSplitter.restoreState(self.tabLog.get("splitterState"))
@@ -357,6 +356,7 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     api = VtAPI(app)
     w = MainWindow(api)
+    print(api.activeWindow.getCommand("ShowPMCommand"))
     sys.exit(app.exec())
 
 if __name__ == "__main__":
@@ -364,4 +364,3 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         print("Err:", e)
-    

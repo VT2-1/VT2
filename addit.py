@@ -441,8 +441,11 @@ class Tag(QtWidgets.QWidget):
         self.closeButton.setObjectName("tagCloseButton")
         self.closeButton.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_TitleBarCloseButton))
         self.closeButton.setMaximumSize(15, 15)
-        self.closeButton.clicked.connect(lambda checked: self.api.activeWindow.runCommand({"command": "RemoveTagCommand", "kwargs": {"tag": self.label.text()[1:], "show": False}}))
+        self.closeButton.clicked.connect(lambda checked: self.api.activeWindow.runCommand({"command": "RemoveTagCommand", "kwargs": {"tag": self.text, "show": False}}))
         layout.addWidget(self.closeButton)
+
+    def mouseDoubleClickEvent(self, a0):
+        self.api.activeWindow.runCommand({"command": "GetFilesForTagCommand", "kwargs": {"tag": self.text}})
 
     def closeTag(self):
         self.onClose(self.text)
@@ -457,23 +460,23 @@ class TagContainer(QtWidgets.QFrame):
 
         self.api=api
 
-        self.layout = QtWidgets.QHBoxLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(5)
+        self.tagLayout = QtWidgets.QHBoxLayout(self)
+        self.tagLayout.setContentsMargins(0, 0, 0, 0)
+        self.tagLayout.setSpacing(5)
 
         self.moreButton = QtWidgets.QToolButton()
         self.moreButton.setObjectName("moreTagsButton")
         self.moreButton.setFixedSize(20, 20)
         self.moreButton.clicked.connect(self.showMoreTags)
         self.moreButton.setVisible(False)
-        self.layout.addWidget(self.moreButton)
+        self.tagLayout.addWidget(self.moreButton)
 
         self.addTagButton = QtWidgets.QPushButton()
         self.addTagButton.setText("+")
         self.addTagButton.setObjectName("addTagButton")
         self.addTagButton.setFixedSize(20, 20)
         self.addTagButton.clicked.connect(lambda: self.api.activeWindow.runCommand({"command": "AddTagCommand"}))
-        self.layout.addWidget(self.addTagButton)
+        self.tagLayout.addWidget(self.addTagButton)
 
     def addTag(self, text):
         if text in self.tags:
@@ -482,15 +485,20 @@ class TagContainer(QtWidgets.QFrame):
         self.tags.append(text)
         tagWidget = Tag(text, self.removeTag, api=self.api)
         tagWidget.setObjectName("fileTag")
-        self.layout.insertWidget(self.layout.count() - 2, tagWidget)
+        self.tagLayout.insertWidget(self.tagLayout.count() - 2, tagWidget)
         self.updateTagsDisplay()
+
+    def clear(self):
+        for i in range(self.tagLayout.count()):
+            widget = self.tagLayout.itemAt(i).widget()
+            if widget.objectName() == "fileTag": widget.deleteLater()
 
     def removeTag(self, text, show=False):
         self.tags.remove(text)
-        for i in range(self.layout.count() - 2):
-            widget = self.layout.itemAt(i).widget()
+        for i in range(self.tagLayout.count() - 2):
+            widget = self.tagLayout.itemAt(i).widget()
             if widget and widget.text == text:
-                widget.setParent(None)
+                widget.deleteLater()
                 break
 
         self.updateTagsDisplay()
@@ -500,8 +508,8 @@ class TagContainer(QtWidgets.QFrame):
             self.showMoreTags()
 
     def updateTagsDisplay(self):
-        for i in range(self.layout.count() - 2):
-            widget = self.layout.itemAt(i).widget()
+        for i in range(self.tagLayout.count() - 2):
+            widget = self.tagLayout.itemAt(i).widget()
             if widget:
                 widget.setVisible(i < self.visibleTags)
         self.moreButton.setVisible(len(self.tags) > self.visibleTags)
@@ -681,7 +689,6 @@ class TagDB:
             query.next()
             fileId = query.value(0)
 
-        # Получаем теги для файла
         query.prepare("""
         SELECT tags.tag FROM tags
         JOIN file_tags ON file_tags.tag_id = tags.id
@@ -696,3 +703,32 @@ class TagDB:
         while query.next():
             tags.append(query.value(0))
         return tags
+
+    def getFilesForTag(self, tag: str) -> List[str]:
+        query = QSqlQuery(self.db)
+
+        query.prepare("SELECT id FROM tags WHERE tag = ?")
+        query.addBindValue(tag)
+        if not query.exec():
+            print(f"Error executing query: {query.lastError().text()}")
+            return []
+        if query.next():
+            tagId = query.value(0)
+        else:
+            print("Tag not found")
+            return []
+
+        query.prepare("""
+        SELECT files.filename FROM files
+        JOIN file_tags ON file_tags.file_id = files.id
+        WHERE file_tags.tag_id = ?
+        """)
+        query.addBindValue(tagId)
+        if not query.exec():
+            print(f"Error executing query: {query.lastError().text()}")
+            return []
+
+        files = []
+        while query.next():
+            files.append(query.value(0))
+        return files

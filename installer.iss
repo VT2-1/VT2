@@ -53,7 +53,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "C:\Users\Trash\VT2\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\Trash\Documents\VarTexter2\Plugins\*"; DestDir: "{userdocs}\VT2\Plugins"; Components: plugins; Flags: ignoreversion recursesubdirs
+Source: "C:\Users\Trash\Documents\VT2\Plugins\*"; DestDir: "{userdocs}\VT2\Plugins"; Components: plugins; Flags: ignoreversion recursesubdirs
 Source: "C:\Users\Trash\VT2\dist\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs
 Source: "C:\Users\Trash\VT2\dist\ui\*"; DestDir: "{app}\ui"; Flags: ignoreversion recursesubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files

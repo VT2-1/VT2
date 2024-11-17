@@ -1,12 +1,35 @@
-import os
+from PyQt6.QtWidgets import QApplication, QTextEdit, QWidget, QVBoxLayout, QPushButton
+from PyQt6.QtGui import QFocusEvent
+import sys
 
-os.chdir(r"C:\Users\Trash\Documents\VarTexter2")
+class CustomTextEdit(QTextEdit):
+    def focusInEvent(self, event: QFocusEvent):
+        super().focusInEvent(event)
+        print("TextEdit gained focus")  # Проверяем, вызывается ли этот метод
 
-import sqlite3
+    def focusOutEvent(self, event: QFocusEvent):
+        super().focusOutEvent(event)
+        print("TextEdit lost focus")  # Проверяем, вызывается ли этот метод
 
-db = sqlite3.connect(".ft")
-cur = db.cursor()
+class MainWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        
+        self.text_edit = CustomTextEdit(self)
+        self.text_edit2 = QTextEdit(self)
+        self.button = QPushButton("Focus TextEdit", self)
+        self.button.clicked.connect(self.focus_text_edit)
+        
+        layout = QVBoxLayout()
+        layout.addWidget(self.text_edit)
+        layout.addWidget(self.text_edit2)
+        layout.addWidget(self.button)
+        self.setLayout(layout)
+    
+    def focus_text_edit(self):
+        self.text_edit.setFocus()  # Принудительно устанавливаем фокус на TextEdit
 
-print(cur.execute("""SELECT * FROM files""").fetchall())
-print(cur.execute("""SELECT * FROM tags""").fetchall())
-print(cur.execute("""SELECT * FROM file_tags""").fetchall())
+app = QApplication(sys.argv)
+window = MainWindow()
+window.show()
+sys.exit(app.exec())
