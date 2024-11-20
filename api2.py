@@ -316,14 +316,19 @@ class VtAPI:
             self.__app: QtWidgets.QApplication = app
         self.__windows = []
         self.activeWindow: VtAPI.Window | None = None
+
         self.STATEFILE = None
+
+        self.INFO = ""
+        self.WARNING = "yellow"
+        self.ERROR = "red"
 
     class Window:
         def __init__(self, api, views=None, activeView=None, qmwclass: QtWidgets.QMainWindow | None = None):
             self.api: VtAPI = api
             self.__mw: QtWidgets.QMainWindow = qmwclass
             self.__signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
-            self.__views = views or []
+            self.views = views or []
             self.activeView: VtAPI.View | None = activeView
             self.model = QtGui.QFileSystemModel()
 
@@ -341,19 +346,12 @@ class VtAPI:
         def activeView(self) -> 'VtAPI.View':
             return self.activeView
 
-        @property
         def views(self):
-            return tuple(self.__views)
+            return self.views
         
         @property
         def signals(self):
             return self.__signals
-
-        def addView(self, view: "VtAPI.View"):
-            self.__views.append(view)
-
-        def delView(self, view: "VtAPI.View"):
-            self.__views.remove(view)
 
         def setTitle(self, s):
             self.__mw.setWindowTitle(f"{s} - {self.api.appName}")
@@ -456,7 +454,7 @@ class VtAPI:
             self.__tab: QtWidgets.QWidget = qwclass
             if self.__tab:
                 self.id: str = self.__tab.objectName().split("-")[-1]
-                self.__tabWidget: QtWidgets.QTabWidget = self.__tab.parentWidget().parentWidget()
+                self.__tabWidget: QtWidgets.QTabWidget = self.window()._Window__mw.tabWidget
                 self.tagBase = self.__tabWidget.parent().parent().parent().tagBase
             else:
                 self.id = None
@@ -878,9 +876,6 @@ class VtAPI:
             self.__window: QtWidgets.QMainWindow = w
             self.__windowApi: VtAPI = self.__window.api
 
-            self.__window.treeView.doubleClicked.connect(self.onDoubleClicked)
-            self.__window.tabWidget.currentChanged.connect(self.tabChngd)
-
         def addSignal(self, signalName: str, signalArgs: list):
             signalType = [arg for arg in signalArgs]
             signal = QtCore.pyqtSignal(*signalType)
@@ -893,14 +888,17 @@ class VtAPI:
         def tabChngd(self, index):
             widget = self.__window.tabWidget.currentWidget()
             try:
-                view = self.__windowApi.View(self.__windowApi, self.__window, qwclass=widget)
-                view.id = widget.objectName().split("-")[-1]
-                for v in self.__windowApi.activeWindow.views:
-                    if v == view:
-                        self.__windowApi.activeWindow.activeView = v
-                        self.__windowApi.activeWindow.setTitle(os.path.normpath(self.__windowApi.activeWindow.activeView.getFile() or 'Untitled'))
-                        self.updateEncoding()
-                        break
+                if widget:
+                    view = self.__windowApi.View(self.__windowApi, self.__windowApi.activeWindow, qwclass=widget)
+                    view.id = widget.objectName().split("-")[-1]
+                    for v in self.__windowApi.activeWindow.views:
+                        if v == view:
+                            self.__windowApi.activeWindow.activeView = v
+                            self.__windowApi.activeWindow.setTitle(os.path.normpath(self.__windowApi.activeWindow.activeView.getFile() or 'Untitled'))
+                            self.updateEncoding()
+                            break
+                    else:
+                        self.__window.setWindowTitle(self.__window.appName)
                 else:
                     self.__window.setWindowTitle(self.__window.appName)
                 self.tabChanged.emit()

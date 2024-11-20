@@ -30,6 +30,8 @@ class Logger:
                     console = dock.textEdit
                     console.clear()
                     console.textCursor().insertHtml(f"<br>{value}")
+                    scrollbar = console.verticalScrollBar()
+                    scrollbar.setValue(scrollbar.maximum())
                     self.__window.api.activeWindow.signals.logWrited.emit(value)
                 except: pass
 
@@ -138,12 +140,13 @@ class Ui_MainWindow(object):
 
         self.verticalLayout.addLayout(self.tab.textEdit.layout)
 
+        newView = self.api.View(self.api, self.api.activeWindow, qwclass=self.tab)
+        self.api.activeWindow.views.append(newView)
+
         self.tabWidget.addTab(self.tab, "")
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), name or "Untitled")
         self.api.activeWindow.setTab(-1)
 
-        newView = self.api.View(self.api, self.api.activeWindow, qwclass=self.tab)
-        self.api.activeWindow.addView(newView)
         self.api.activeWindow.focus(newView)
 
         self.api.activeWindow.signals.tabCreated.emit()
@@ -314,6 +317,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         # Commands register area
 
+        self.treeView.doubleClicked.connect(self.api.activeWindow.signals.onDoubleClicked)
+        self.tabWidget.currentChanged.connect(self.api.activeWindow.signals.tabChngd)
+
         #####################################
 
         self.pl.loadPlugins()
@@ -326,13 +332,17 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if self.api.activeWindow.activeView: self.api.activeWindow.activeView.update()
         self.show()
 
-    def eventFilter(self, a0, a1):
-        if type(a1) in [QtGui.QHoverEvent, QtGui.QMoveEvent, QtGui.QResizeEvent]:
-            self.api.activeWindow = self.api.Window(self.api, qmwclass=a0)
-        return super().eventFilter(a0, a1)
-
     def argvParse(self):
         return sys.argv
+
+    # PYQT 6 standart events
+
+    def eventFilter(self, a0, a1):
+        if type(a1) in [QtGui.QHoverEvent, QtGui.QMoveEvent, QtGui.QResizeEvent, QtGui.QMouseEvent]:
+            for window in self.api.windows:
+                if window._Window__mw == a0:
+                    self.api.activeWindow = window
+        return super().eventFilter(a0, a1)
 
     def keyPressEvent(self, event):
         key_code = event.key()
@@ -376,7 +386,4 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print("Err:", e)
+    main()

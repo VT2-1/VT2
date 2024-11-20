@@ -417,7 +417,7 @@ class TabWidget (QtWidgets.QTabWidget):
                     pass
             else:
                 self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
-                self.MainWindow.api.activeWindow.delView(self.MainWindow.api.activeWindow.activeView)
+                self.MainWindow.api.activeWindow.views.remove(self.MainWindow.api.activeWindow.activeView)
                 tab.deleteLater()
                 self.removeTab(currentIndex)
 
