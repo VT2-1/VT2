@@ -316,6 +316,7 @@ class VtAPI:
             self.__app: QtWidgets.QApplication = app
         self.__windows = []
         self.activeWindow: VtAPI.Window | None = None
+        self.STATEFILE = None
 
     class Window:
         def __init__(self, api, views=None, activeView=None, qmwclass: QtWidgets.QMainWindow | None = None):
@@ -324,8 +325,7 @@ class VtAPI:
             self.__signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
             self.__views = views or []
             self.activeView: VtAPI.View | None = activeView
-
-            self.api.addWindow(self)
+            self.model = QtGui.QFileSystemModel()
 
         def newFile(self) -> 'VtAPI.View':
             self.__mw.addTab()
@@ -393,8 +393,9 @@ class VtAPI:
         def getLog(self):
             return self.__mw.logger.log
 
-        def setLogMsg(self, msg):
-            self.__mw.logger.log += f"\n{msg}"
+        def setLogMsg(self, msg, t=""):
+            msg = f"""<i style="color: {t};">{msg}</i>"""
+            self.__mw.logger.log += f"<br>{msg}"
 
         def getTreeModel(self):
             return self.model
@@ -856,6 +857,8 @@ class VtAPI:
 
         windowClosed = QtCore.pyqtSignal()
         windowStarted = QtCore.pyqtSignal()
+        windowStateSaving = QtCore.pyqtSignal()
+        windowStateRestoring = QtCore.pyqtSignal()
 
         logWrited = QtCore.pyqtSignal(str)
 
@@ -1040,6 +1043,22 @@ class VtAPI:
                             current[i] = item.replace('{', '{{').replace('}', '}}')
 
         return result
+
+    def findKey(self, p, d):
+        current = d
+        for key in p.split("."):
+            if isinstance(current, dict) and key in current: current = current[key]
+            else: return None
+        return current
+
+    def addKey(self, p, value, d):
+        path = p.split(".")
+        current = d
+        for key in path[:-1]:
+            if key not in current or not isinstance(current[key], dict):
+                current[key] = {}
+            current = current[key]
+        current[path[-1]] = value
 
     def replacePaths(self, data):
         def replace_var(match):

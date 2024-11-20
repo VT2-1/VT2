@@ -29,7 +29,7 @@ class Logger:
                 try:
                     console = dock.textEdit
                     console.clear()
-                    console.append(value)
+                    console.textCursor().insertHtml(f"<br>{value}")
                     self.__window.api.activeWindow.signals.logWrited.emit(value)
                 except: pass
 
@@ -57,6 +57,7 @@ class Ui_MainWindow(object):
         self.themeFile = ""
         self.localeDirs = []
 
+        self.MainWindow.setFocus()
         self.MainWindow.setObjectName("MainWindow")
         self.MainWindow.resize(800, 600)
 
@@ -203,33 +204,38 @@ class Ui_MainWindow(object):
                 with open(stateFile, 'rb') as f:
                     packed_data = f.read()
                     self.tabLog = msgpack.unpackb(packed_data, raw=False)
+                    self.api.STATEFILE = self.tabLog
         except ValueError:
             self.logger.log += f"\nFailed to restore window state. No file found at {stateFile}"  
             self.tabLog = {}
-        if self.tabLog.get("themeFile"): self.themeFile = self.tabLog.get("themeFile")
-        if self.tabLog.get("locale"): self.locale = self.tabLog.get("locale")
-        else: self.locale = self.settData.get("locale")
-        if self.locale == "auto":
+        if self.api.findKey("settings.themeFile", self.api.STATEFILE): self.themeFile = self.api.findKey("settings.themeFile", self.api.STATEFILE)
+        if self.api.findKey("settings.locale", self.api.STATEFILE): self.locale = self.api.findKey("settings.locale", self.api.STATEFILE)
+        else: self.locale = self.api.findKey("settings.locale", self.api.STATEFILE)
+        if self.locale == "auto" or not self.locale:
             self.locale = self.defineLocale()
+        # self.locale = "ru" # Проверка ./locale/
         self.api.activeWindow.setTheme(self.themeFile)
 
     def restoreWState(self):
-        for tab in self.tabLog.get("tabs") or []:
-            tab = self.tabLog.get("tabs").get(tab)
+        for idx, tab in enumerate(self.api.findKey("state.tabWidget.tabs", self.api.STATEFILE) or []):
+            tab = self.api.findKey(f"state.tabWidget.tabs.{str(idx)}", self.api.STATEFILE)
             self.addTab()
-            self.api.activeWindow.activeView.setTitle(tab.get("name"))
-            self.api.activeWindow.activeView.setFile(tab.get("file"))
-            self.api.activeWindow.activeView.setText(tab.get("text"))
-            self.api.activeWindow.activeView.setCanSave(tab.get("canSave"))
-            self.api.activeWindow.activeView.setSaved(tab.get("saved"))
+            self.api.activeWindow.activeView.setTitle(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.name", self.api.STATEFILE))
+            self.api.activeWindow.activeView.setFile(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.file", self.api.STATEFILE))
+            self.api.activeWindow.activeView.setText(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.text", self.api.STATEFILE))
+            self.api.activeWindow.activeView.setCanSave(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.canSave", self.api.STATEFILE))
+            self.api.activeWindow.activeView.setSaved(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.isSaved", self.api.STATEFILE))
             self.api.activeWindow.setTitle(os.path.normpath(self.api.activeWindow.activeView.getFile() or 'Untitled'))
-            self.api.activeWindow.activeView.setTextSelection(tab.get("selection")[0], tab.get("selection")[1])
-            self.api.activeWindow.activeView.setMmapHidden(tab.get("mmaphidden", 0))
+            self.api.activeWindow.activeView.setTextSelection(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE)[0], self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE)[1])
+            self.api.activeWindow.activeView.setMmapHidden(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.mmapHidden", self.api.STATEFILE) or 0)
             if self.api.activeWindow.activeView.getFile(): self.api.activeWindow.signals.fileOpened.emit(self.api.activeWindow.activeView)
-        self.api.activeWindow.setTreeWidgetDir(self.tabLog.get("openedDir", "/"))
-        if self.tabLog.get("activeTab"):
-            self.tabWidget.setCurrentIndex(int(self.tabLog.get("activeTab")))
-        if self.tabLog.get("splitterState"): self.treeSplitter.restoreState(self.tabLog.get("splitterState"))
+        self.api.activeWindow.setTreeWidgetDir(self.api.findKey("state.treeWidget.openedDir", self.api.STATEFILE) or "/")
+        if self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE):
+            self.tabWidget.setCurrentIndex(int(self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE)))
+        if self.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE)): self.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE))
+        self.tabWidget.tabBar().setMovable(self.api.findKey("state.tabWidget.tabBar.movable", self.api.STATEFILE) or 1)
+        self.tabWidget.tabBar().setTabsClosable(self.api.findKey("state.tabWidget.tabBar.closable", self.api.STATEFILE) or 1)
+        self.api.activeWindow.signals.windowStateRestoring.emit()
 
     def closeEvent(self, e: QtCore.QEvent):
         if self.saveState: self.saveWState()
@@ -238,46 +244,55 @@ class Ui_MainWindow(object):
         e.accept()
 
     def saveWState(self):
-        tabsInfo = {}
-        tabs = tabsInfo["tabs"] = {}
-        tabsInfo["themeFile"] = self.themeFile
-        tabsInfo["locale"] = self.locale
+        stateDict = {}
+        self.api.STATEFILE = stateDict
+        settingsState = stateDict["settings"] = {}
+        windowState = stateDict["state"] = {}
+        splitterState = stateDict["state"]["splitter"] = {}
+        tabWidgetState = stateDict["state"]["tabWidget"] = {}
+        tabBarState = stateDict["state"]["tabWidget"]["tabBar"] = {}
+        tabWidgetTabsState = stateDict["state"]["tabWidget"]["tabs"] = {}
+        treeWidgetState = stateDict["state"]["treeWidget"] = {}
+        toDoList = stateDict["state"]["toDoList"] = {}
+        settingsState["themeFile"] = self.themeFile
+        settingsState["locale"] = self.locale
         index = self.treeView.currentIndex()
-        if self.api.activeWindow.model.isDir(index):
-            tabsInfo["openedDir"] = self.api.activeWindow.model.filePath(index)
-        if self.api.activeWindow.activeView and self.api.activeWindow.activeView in self.api.activeWindow.views: tabsInfo["activeTab"] = str(self.api.activeWindow.activeView.tabIndex())
-        if self.api.activeWindow.activeView and self.api.activeWindow.activeView in self.api.activeWindow.views: tabsInfo["activeTab"] = str(self.api.activeWindow.activeView.tabIndex())
-        tabsInfo["splitterState"] = self.treeSplitter.saveState().data()
+        tabBarState["movable"] = self.tabWidget.tabBar().isMovable()
+        tabBarState["closable"] = self.tabWidget.tabBar().tabsClosable()
+        if self.api.activeWindow.model.isDir(index): treeWidgetState["openedDir"] = self.api.activeWindow.model.filePath(index)
+        if self.api.activeWindow.activeView in self.api.activeWindow.views: tabWidgetState["activeTab"] = str(self.api.activeWindow.activeView.tabIndex())
+        splitterState["data"] = self.treeSplitter.saveState().data()
         stateFile = os.path.join(self.packageDirs, '.ws')
         for view in self.api.activeWindow.views:
             cursor = view.getTextCursor()
             start = cursor.selectionStart()
             end = cursor.selectionEnd()
-            tabs[str(view.tabIndex())] = {
+            tabWidgetTabsState[str(view.tabIndex())] = {
                 "name": view.getTitle(),
                 "file": view.getFile(),
                 "canSave": view.getCanSave(),
                 "text": view.getText(),
-                "saved": view.getSaved(),
+                "isSaved": view.getSaved(),
                 "selection": [start, end],
-                "modified": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "mmaphidden": view.isMmapHidden()
+                # "modified": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "mmapHidden": view.isMmapHidden()
             }
-        tabs = {str(idx): tabs[str(idx)] for idx in range(len(tabs))}
+        tabWidgetTabsState = {str(idx): tabWidgetTabsState[str(idx)] for idx in range(len(tabWidgetTabsState))}
+        self.api.activeWindow.signals.windowStateSaving.emit()
         if os.path.isfile(stateFile):
             mode = 'wb'
         else:
             mode = 'ab'
         with open(stateFile, mode) as f:
-            packed_data = msgpack.packb(tabsInfo, use_bin_type=True)
+            packed_data = msgpack.packb(stateDict, use_bin_type=True)
             f.write(packed_data)
         self.settFile.close()
 
 class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
     def run(self):
-        w = MainWindow(restoreState=False)
+        w = MainWindow(api, restoreState=False)
         w.show()
-    
+
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
         super().__init__()
@@ -288,9 +303,11 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.tabBarContextMenu = QtWidgets.QMenu(self)
 
         self.setupUi(self, self.argvParse(), self.api)
-        self.api.activeWindow = self.api.Window(self.api, qmwclass=self)
+        self.w = self.api.Window(self.api, qmwclass=self)
+        self.api.addWindow(self.w)
+        self.api.activeWindow = self.w
         self.windowInitialize()
-
+        self.installEventFilter(self)
         self.pl = PluginManager(self.pluginsDir, self)
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
         if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
@@ -309,11 +326,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if self.api.activeWindow.activeView: self.api.activeWindow.activeView.update()
         self.show()
 
-    def focusInEvent(self, event):
-        super().focusInEvent(event)
-        w = self.api.Window(self.api, qmwclass=self)
-        if w in self.api.windows:
-            self.api.activeWindow = w
+    def eventFilter(self, a0, a1):
+        if type(a1) in [QtGui.QHoverEvent, QtGui.QMoveEvent, QtGui.QResizeEvent]:
+            self.api.activeWindow = self.api.Window(self.api, qmwclass=a0)
+        return super().eventFilter(a0, a1)
 
     def argvParse(self):
         return sys.argv
@@ -353,6 +369,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if action: action.trigger()
 
 def main():
+    global api
     app = QtWidgets.QApplication(sys.argv)
     api = VtAPI(app)
     w = MainWindow(api)

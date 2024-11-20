@@ -28,8 +28,13 @@ class MainWindow(QWidget):
     
     def focus_text_edit(self):
         self.text_edit.setFocus()  # Принудительно устанавливаем фокус на TextEdit
+    def focusInEvent(self, a0):
+        print("Window focused")
+        return super().focusInEvent(a0)
 
 app = QApplication(sys.argv)
 window = MainWindow()
 window.show()
+window2 = MainWindow()
+window2.show()
 sys.exit(app.exec())
