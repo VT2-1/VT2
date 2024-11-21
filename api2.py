@@ -383,7 +383,7 @@ class VtAPI:
             return self.__mw.themeFile
 
         def setTheme(self, theme):
-            themePath = os.path.join(self.__mw.themesDir, theme)
+            themePath = os.path.join(self.api.themesDir, theme)
             if os.path.isfile(themePath):
                 self.__mw.setStyleSheet(open(themePath, "r+").read())
                 self.__mw.themeFile = theme

@@ -1,7 +1,6 @@
 import sys, json, os, uuid
 
-from PyQt6 import QtCore, QtWidgets
-from datetime import datetime
+from PyQt6 import QtCore, QtWidgets, uic
 import msgpack, io
 
 from addit import *
@@ -60,24 +59,9 @@ class Ui_MainWindow(object):
         self.localeDirs = []
 
         self.MainWindow.setFocus()
-        self.MainWindow.setObjectName("MainWindow")
-        self.MainWindow.resize(800, 600)
-
-        self.console = None
+        uic.loadUi("ui/main.ui", self.MainWindow)
 
         self.translator = QtCore.QTranslator()
-
-        self.centralwidget = QtWidgets.QWidget(parent=self.MainWindow)
-        self.centralwidget.setObjectName("centralwidget")
-
-        self.horizontalLayout = QtWidgets.QHBoxLayout(self.centralwidget)
-        self.horizontalLayout.setObjectName("horizontalLayout")
-
-        self.treeView = QtWidgets.QTreeView(parent=self.centralwidget)
-        self.treeView.setMinimumWidth(150)
-        self.treeView.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
-        self.treeView.setMaximumWidth(300)
-        self.treeView.setObjectName("treeWidget")
 
         self.treeSplitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         self.horizontalLayout.addWidget(self.treeSplitter)
@@ -88,30 +72,12 @@ class Ui_MainWindow(object):
 
         self.MainWindow.setCentralWidget(self.centralwidget)
 
-        self.menubar = QtWidgets.QMenuBar(parent=self.MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 800, 21))
-        self.menubar.setObjectName("menuBar")
-
-        self.MainWindow.setMenuBar(self.menubar)
-
-        self.encodingLabel = QtWidgets.QLabel("UTF-8")
-        self.encodingLabel.setObjectName("encodingLabel")
-        self.statusbar = QtWidgets.QStatusBar(parent=self.MainWindow)
-        self.statusbar.setObjectName("statusbar")
         self.statusbar.addPermanentWidget(self.encodingLabel)
-        self.MainWindow.setStatusBar(self.statusbar)
 
-        self.api: VtAPI = api
+        self.api: VtAPI = self.MainWindow.api
         self.settings()
-        self.tagBase = TagDB(os.path.join(self.packageDirs, ".ft"))
-        self.api.appName = self.MainWindow.appName
-        self.api.packagesDir = self.packageDirs
-        self.api.pluginsDir = self.pluginsDir
-        self.api.cacheDir = self.cacheDir
-        self.api.themesDir = self.themesDir
-        self.logger = Logger(self.MainWindow)
-        self.logger.log = f"{self.api.appName} window loading..."
-
+        self.tagBase = TagDB(os.path.join(self.api.packagesDirs, ".ft"))
+        self.logger = self.MainWindow.logger
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
 
     def addTab(self, name: str = "", text: str = "", i: int = -1, file=None, canSave=True, canEdit=True, encoding="UTF-8"):
@@ -160,27 +126,29 @@ class Ui_MainWindow(object):
                 QtCore.QCoreApplication.installTranslator(self.translator)
 
     def settings(self):
-        self.settFile = open(os.path.join(self.appPath, 'ui/Main.settings'), 'r+', encoding='utf-8')
-        self.settData = json.load(self.settFile)
-        self.packageDirs = self.settData.get("packageDirs")
-        if self.packageDirs:
-            self.packageDirs = self.api.replacePaths(self.packageDirs.get(self.api.platform()))
-            if not os.path.isdir(self.packageDirs): os.makedirs(self.packageDirs)
-            self.themesDir = self.api.replacePaths(os.path.join(self.packageDirs, "Themes"))
-            if not os.path.isdir(self.themesDir): os.makedirs(self.themesDir)
-            self.pluginsDir = self.api.replacePaths(os.path.join(self.packageDirs, "Plugins"))
-            if not os.path.isdir(self.pluginsDir): os.makedirs(self.pluginsDir)
-            self.uiDir = self.api.replacePaths(os.path.join(self.packageDirs, "Ui"))
-            if not os.path.isdir(self.uiDir): os.makedirs(self.uiDir)
-            self.cacheDir = self.api.replacePaths(os.path.join(self.packageDirs, "cache"))
-            if not os.path.isdir(self.cacheDir): os.makedirs(self.cacheDir)
-        self.MainWindow.appName = self.settData.get("appName")
-        self.MainWindow.__version__ = self.settData.get("apiVersion")
-        self.logStdout = self.settData.get("logStdout")
-        self.saveState = self.settData.get("saveState")
+        try:
+            self.settFile = open(os.path.join(self.appPath, 'ui/Main.settings'), 'r+', encoding='utf-8')
+            self.settData = json.load(self.settFile)
+        except:
+            self.settData = {}
+            self.api.activeWindow.setLogMsg("Error reading settings. Check /ui/Main.settings file", self.api.ERROR)
+        self.api.packagesDirs = self.settData.get("packageDirs") or "./Packages/"
+        if type(self.api.packagesDirs) == dict:
+            self.api.packagesDirs = self.api.replacePaths(self.api.packagesDirs.get(self.api.platform()))
+        self.api.themesDir = self.api.replacePaths(os.path.join(self.api.packagesDirs, "Themes"))
+        self.api.pluginsDir = self.api.replacePaths(os.path.join(self.api.packagesDirs, "Plugins"))
+        self.api.uiDir = self.api.replacePaths(os.path.join(self.api.packagesDirs, "Ui"))
+        self.api.cacheDir = self.api.replacePaths(os.path.join(self.api.packagesDirs, "cache"))
+        for d in [self.api.packagesDirs, self.api.themesDir, self.api.pluginsDir, self.api.uiDir, self.api.cacheDir]:
+            if not os.path.isdir(d): os.makedirs(d)
+        self.api.appName = self.settData.get("appName") or "VT2"
+        self.api.__version__ = self.settData.get("apiVersion") or "1.0"
+        self.logStdout = self.settData.get("logStdout") or False
+        self.saveState = self.settData.get("saveState") or True
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
-        self.menuFile = self.api.replacePaths(os.path.join(self.packageDirs, self.settData.get("menu")))
-        os.chdir(self.packageDirs)
+        if self.settData.get("menu"): self.menuFile = self.api.replacePaths(os.path.join(self.api.packagesDirs, self.settData.get("menu")))
+        else: self.menuFile = None
+        os.chdir(self.api.packagesDirs)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
@@ -192,16 +160,16 @@ class Ui_MainWindow(object):
         if openFile:
             self.api.activeWindow.runCommand({"command": "OpenFileCommand", "kwargs": {"f": files}})
         else:
-            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.pluginsDir, 'Open&Save')}")
+            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.api.pluginsDir, 'Open&Save')}")
 
     def getCommand(self, name):
         return getattr(sys.modules[__name__], name, None)
 
     def windowInitialize(self):
-        [os.makedirs(dir) for dir in [self.themesDir, self.pluginsDir, self.uiDir] if not os.path.isdir(dir)]
+        [os.makedirs(dir) for dir in [self.api.themesDir, self.api.pluginsDir, self.api.uiDir] if not os.path.isdir(dir)]
         self.tabLog = {}
-        stateFile = os.path.join(self.packageDirs, '.ws')
-        self.MainWindow.setWindowTitle(self.MainWindow.appName)
+        stateFile = os.path.join(self.api.packagesDirs, '.ws')
+        self.MainWindow.setWindowTitle(self.api.appName)
         try:
             if os.path.isfile(stateFile):
                 with open(stateFile, 'rb') as f:
@@ -235,7 +203,7 @@ class Ui_MainWindow(object):
         self.api.activeWindow.setTreeWidgetDir(self.api.findKey("state.treeWidget.openedDir", self.api.STATEFILE) or "/")
         if self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE):
             self.tabWidget.setCurrentIndex(int(self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE)))
-        if self.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE)): self.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE))
+        if self.api.findKey(f"state.splitter.data", self.api.STATEFILE): self.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE))
         self.tabWidget.tabBar().setMovable(self.api.findKey("state.tabWidget.tabBar.movable", self.api.STATEFILE) or 1)
         self.tabWidget.tabBar().setTabsClosable(self.api.findKey("state.tabWidget.tabBar.closable", self.api.STATEFILE) or 1)
         self.api.activeWindow.signals.windowStateRestoring.emit()
@@ -265,7 +233,7 @@ class Ui_MainWindow(object):
         if self.api.activeWindow.model.isDir(index): treeWidgetState["openedDir"] = self.api.activeWindow.model.filePath(index)
         if self.api.activeWindow.activeView in self.api.activeWindow.views: tabWidgetState["activeTab"] = str(self.api.activeWindow.activeView.tabIndex())
         splitterState["data"] = self.treeSplitter.saveState().data()
-        stateFile = os.path.join(self.packageDirs, '.ws')
+        stateFile = os.path.join(self.api.packagesDirs, '.ws')
         for view in self.api.activeWindow.views:
             cursor = view.getTextCursor()
             start = cursor.selectionStart()
@@ -299,21 +267,22 @@ class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
         super().__init__()
+        self.api: VtAPI = api
+        self.logger = Logger(self)
 
-        self.api = api
-
+        self.w = self.api.Window(self.api, qmwclass=self)
+        self.api.addWindow(self.w)
+        self.api.activeWindow = self.w
         self.textContextMenu = QtWidgets.QMenu(self)
         self.tabBarContextMenu = QtWidgets.QMenu(self)
 
         self.setupUi(self, self.argvParse(), self.api)
-        self.w = self.api.Window(self.api, qmwclass=self)
-        self.api.addWindow(self.w)
-        self.api.activeWindow = self.w
+
         self.windowInitialize()
         self.installEventFilter(self)
-        self.pl = PluginManager(self.pluginsDir, self)
+        self.pl = PluginManager(self.api.pluginsDir, self)
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
-        if os.path.isdir(os.path.join(self.uiDir, "locale")): self.translate(os.path.join(self.uiDir, "locale"))
+        if os.path.isdir(os.path.join(self.api.uiDir, "locale")): self.translate(os.path.join(self.api.uiDir, "locale"))
 
         # Commands register area
 
