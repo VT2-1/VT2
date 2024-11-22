@@ -64,6 +64,8 @@ class PluginManager:
             
             for pl in self.plugins:
                 self.loadPlugin(pl)
+        except Exception as e:
+            print(e, self.__windowApi.ERROR)
         finally:
             os.chdir(self.dPath)
 
@@ -94,7 +96,8 @@ class PluginManager:
         try:
             menuFile = json.load(open(f, "r+"))
             localeDir = os.path.join(path if module else "", "locale")
-            if os.path.isdir(localeDir): self.__window.translate(localeDir)
+            if os.path.isdir(localeDir):
+                self.__window.translate(localeDir)
             for menu in menuFile:
                 if menu == "menuBar" or menu == "mainMenu":
                     self.parseMenu(menuFile.get(menu), self.__window.menuBar(), pl=module, localemenu="MainMenu")
@@ -333,7 +336,7 @@ class VtAPI:
             self.model = QtGui.QFileSystemModel()
 
         def newFile(self) -> 'VtAPI.View':
-            self.__mw.addTab()
+            self.__mw.ui.addTab()
             return self.activeView
         
         def openFiles(self, files):
@@ -413,7 +416,7 @@ class VtAPI:
 
         def updateMenu(self, menu, data):
             menuClass = self.__mw.pl.findMenu(self.__mw.menuBar(), menu)
-            if menu:
+            if menuClass:
                 self.__mw.pl.clearMenu(self.__mw.menuBar(), menu)
                 self.__mw.pl.parseMenu(data, menuClass)
 
@@ -454,8 +457,8 @@ class VtAPI:
             self.__tab: QtWidgets.QWidget = qwclass
             if self.__tab:
                 self.id: str = self.__tab.objectName().split("-")[-1]
-                self.__tabWidget: QtWidgets.QTabWidget = self.window()._Window__mw.tabWidget
-                self.tagBase = self.__tabWidget.parent().parent().parent().tagBase
+                self.__tabWidget: QtWidgets.QTabWidget = self.window()._Window__mw.ui.widgets.tabWidget
+                self.tagBase = window._Window__mw.ui.tagBase
             else:
                 self.id = None
                 self.__tabWidget = None
@@ -898,12 +901,12 @@ class VtAPI:
                             self.updateEncoding()
                             break
                     else:
-                        self.__window.setWindowTitle(self.__window.appName)
+                        self.__window.setWindowTitle(self.__windowApi.appName)
                 else:
-                    self.__window.setWindowTitle(self.__window.appName)
+                    self.__window.setWindowTitle(self.__windowApi.appName)
                 self.tabChanged.emit()
             except Exception as e:
-                self.__window.setWindowTitle(self.__window.appName)
+                self.__window.setWindowTitle(self.__windowApi.appName)
                 self.__windowApi.activeWindow.setLogMsg(f"Error when updating tabs: {e}")
 
         def updateEncoding(self):
