@@ -1,4 +1,5 @@
 from PyQt6 import QtWidgets, QtCore, QtGui, uic
+import os
 
 class TabBar(QtWidgets.QTabBar):
     def __init__(self, tabwidget):
@@ -125,7 +126,7 @@ class Ui_MainWindow(object):
 
     def setupUi(self):
         self.MainWindow.setFocus()
-        uic.loadUi("ui/main.vt-ui", self.MainWindow)
+        uic.loadUi(os.path.join(os.path.dirname(__file__), "main.vt-ui"), self.MainWindow)
 
         # Exporting required classes
 

@@ -151,11 +151,14 @@ class PluginManager:
                 if 'command' in item:
                     args = item.get('command').get("args")
                     kwargs = item.get('command').get("kwargs")
-                    self.registerCommand({"action": action, "command": item['command'], "plugin": pl, "args": args, "kwargs": kwargs})
+                    data = {"action": action, "command": item['command'], "plugin": pl, "args": args, "kwargs": kwargs}
                     if 'checkable' in item:
                         action.setCheckable(item['checkable'])
+                        if "checkedStatePath" in item:
+                            data["checkedStatePath"] = item.get("checkedStatePath")
                         if 'checked' in item:
                             action.setChecked(item['checked'])
+                    self.registerCommand(data)
                 parent.addAction(action)
 
     def executeCommand(self, c, *args, **kwargs):
@@ -164,17 +167,17 @@ class PluginManager:
         c = self.regCommands.get(command.get("command"))
         if c:
             try:
-                args = command.get("args")
-                kwargs = command.get("kwargs")
+                args = command.get("args") or []
+                kwargs = command.get("kwargs") or {}
                 action = c.get("action")
                 if action and action.isCheckable():
-                    checked_value = ckwargs.get("checked")
-
-                    if checked_value is not None:
-                        action.setChecked(checked_value)
-                    else:
-                        new_checked_state = not action.isChecked()
-                        action.setChecked(new_checked_state)
+                    if c.get("checkedStatePath"):
+                        value = self.__windowApi.findKey(c.get("checkedStatePath"), self.__windowApi.STATEFILE)
+                        if value in [True, False]:
+                            if "restoring" in kwargs:
+                                action.setChecked(value)
+                            else:
+                                action.setChecked(not value)
                 cl = c.get("command")
                 if issubclass(cl, VtAPI.Plugin.TextCommand):
                     c = cl(self.__windowApi, self.__windowApi.activeWindow.activeView)
@@ -185,10 +188,10 @@ class PluginManager:
                 out = c.run(*args or [], **kwargs or {})
                 self.__windowApi.activeWindow.setLogMsg(f"Executed command '{command}' with args '{args}', kwargs '{kwargs}'")
                 if out:
-                    self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'")
+                    self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'", self.__windowApi.ERROR)
             except Exception as e:
                 traceback.print_exc()
-                self.__windowApi.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}")
+                self.__windowApi.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}", self.__windowApi.ERROR)
         else:
             self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' not found")
 
@@ -200,6 +203,7 @@ class PluginManager:
             args = data.get("args", [])
             kwargs = data.get("kwargs", {})
             action = data.get("action") or QtGui.QAction("", self.__window)
+            chkdStatePath = data.get("checkedStatePath")
             if 'shortcut' in data:
                 if not data['shortcut'] in self.shortcuts:
                     action.setShortcut(QtGui.QKeySequence(data['shortcut']))
@@ -212,6 +216,7 @@ class PluginManager:
                 "args": args,
                 "kwargs": kwargs,
                 "plugin": pl,
+                "checkedStatePath": chkdStatePath,
             }
 
     def registerCommand(self, commandInfo):
@@ -227,6 +232,7 @@ class PluginManager:
 
         args = commandInfo.get("args", [])
         kwargs = commandInfo.get("kwargs", {})
+        chkdStatePath = commandInfo.get("checkedStatePath")
         action.triggered.connect(lambda: self.executeCommand({"command": commandN, "args": args, "kwargs": kwargs}))
         if 'shortcut' in commandInfo:
             if not commandInfo['shortcut'] in self.shortcuts:
@@ -243,6 +249,7 @@ class PluginManager:
                     "args": args,
                     "kwargs": kwargs,
                     "plugin": pl,
+                    "checkedStatePath": chkdStatePath,
                 }
             except (ImportError, AttributeError, TypeError) as e:
                 self.__windowApi.activeWindow.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
@@ -258,6 +265,7 @@ class PluginManager:
                     "args": args,
                     "kwargs": kwargs,
                     "plugin": None,
+                    "checkedStatePath": chkdStatePath,
                 }
             else:
                 self.__windowApi.activeWindow.setLogMsg(f"Command '{commandN}' not found")
@@ -858,8 +866,9 @@ class VtAPI:
 
         windowClosed = QtCore.pyqtSignal()
         windowStarted = QtCore.pyqtSignal()
-        windowStateSaving = QtCore.pyqtSignal()
         windowStateRestoring = QtCore.pyqtSignal()
+        windowRunningStateInited = QtCore.pyqtSignal()
+        windowStateSaving = QtCore.pyqtSignal()
 
         logWrited = QtCore.pyqtSignal(str)
 
