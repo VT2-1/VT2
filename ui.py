@@ -1,7 +1,8 @@
 import sys, json, os, uuid
 
-from PyQt6 import QtCore, QtWidgets, uic
-import msgpack, io, importlib, importlib.resources
+from PyQt6 import QtCore, QtWidgets
+from datetime import datetime
+import msgpack, io
 
 from addit import *
 from api2 import PluginManager, VtAPI
@@ -22,7 +23,6 @@ class Logger:
     @log.setter
     def log(self, value):
         self._log = value
-        self.__window.api.activeWindow.signals.logWrited.emit(value)
         if self.__window.api.activeWindow:
             dock = self.__window.api.activeWindow.isDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea)
             if dock:
@@ -32,14 +32,14 @@ class Logger:
                     console.textCursor().insertHtml(f"<br>{value}")
                     scrollbar = console.verticalScrollBar()
                     scrollbar.setValue(scrollbar.maximum())
+                    self.__window.api.activeWindow.signals.logWrited.emit(value)
                 except: pass
 
     def write(self, message):
         if message:
-            try:
-                if self.__window.logStdout:
-                    self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
-            except: pass
+            if self.__window.logStdout:
+                self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
+                self.__window.api.activeWindow.signals.logWrited.emit(message)
             self._stdout_backup.write(message)
 
     def flush(self):
@@ -49,30 +49,63 @@ class Logger:
         sys.stdout = self._stdout_backup
         self._log_stream.close()
 
-def importModule(path, n):
-    spec = importlib.util.spec_from_file_location(n, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[n] = module
-    spec.loader.exec_module(module)
-    return module
-
 class Ui_MainWindow(object):
     sys.path.insert(0, ".")
-    def __init__(self, MainWindow, argv=[], api=None):
+
+    def setupUi(self, MainWindow, argv=[], api=None):
         self.MainWindow: QtWidgets.QMainWindow = MainWindow
+        self.appPath = os.path.basename(__file__)
         self.appPath = os.path.dirname(argv[0])
+        self.themeFile = ""
+        self.localeDirs = []
         self.api: VtAPI = api
         self.settings()
-        self.localeDirs = []
 
-        module = importModule(os.path.join(self.api.uiDir, "UiClass.cpython-310.pyc"), "UiClass")
-        wClass = getattr(module, "Ui_MainWindow")
-        self.widgets = wClass(self.MainWindow, argv, api)
-        self.widgets.setupUi()
+        self.MainWindow.setFocus()
+        self.MainWindow.setObjectName("MainWindow")
+        self.MainWindow.resize(800, 600)
+
+        self.console = None
+
+        self.translator = QtCore.QTranslator()
+
+        self.centralwidget = QtWidgets.QWidget(parent=self.MainWindow)
+        self.centralwidget.setObjectName("centralwidget")
+
+        self.horizontalLayout = QtWidgets.QHBoxLayout(self.centralwidget)
+        self.horizontalLayout.setObjectName("horizontalLayout")
+
+        self.treeView = QtWidgets.QTreeView(parent=self.centralwidget)
+        self.treeView.setMinimumWidth(150)
+        self.treeView.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
+        self.treeView.setMaximumWidth(300)
+        self.treeView.setObjectName("treeWidget")
+
+        self.treeSplitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        self.horizontalLayout.addWidget(self.treeSplitter)
+
+        self.tabWidget = TabWidget(parent=self.centralwidget, MainWindow=self.MainWindow)
+        self.treeSplitter.addWidget(self.treeView)
+        self.treeSplitter.addWidget(self.tabWidget)
+
+        self.MainWindow.setCentralWidget(self.centralwidget)
+
+        self.menubar = QtWidgets.QMenuBar(parent=self.MainWindow)
+        self.menubar.setGeometry(QtCore.QRect(0, 0, 800, 21))
+        self.menubar.setObjectName("menuBar")
+
+        self.MainWindow.setMenuBar(self.menubar)
+
+        self.encodingLabel = QtWidgets.QLabel("UTF-8")
+        self.encodingLabel.setObjectName("encodingLabel")
+        self.statusbar = QtWidgets.QStatusBar(parent=self.MainWindow)
+        self.statusbar.setObjectName("statusbar")
+        self.statusbar.addPermanentWidget(self.encodingLabel)
+        self.MainWindow.setStatusBar(self.statusbar)
 
         self.tagBase = TagDB(os.path.join(self.api.packagesDirs, ".ft"))
         self.logger = self.MainWindow.logger
-        self.api.activeWindow.setLogMsg(f"{self.api.appName} created ui", "green")
+
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
 
     def addTab(self, name: str = "", text: str = "", i: int = -1, file=None, canSave=True, canEdit=True, encoding="UTF-8"):
@@ -80,7 +113,7 @@ class Ui_MainWindow(object):
         self.tab.file = file
         self.tab.canSave = canSave
         self.tab.canEdit = canEdit
-        self.widgets.tabWidget.tabBar().setTabSaved(self.tab, True)
+        self.tabWidget.tabBar().setTabSaved(self.tab, True)
         self.tab.encoding = encoding
         self.tab.setObjectName(f"tab-{uuid.uuid4()}")
 
@@ -104,16 +137,24 @@ class Ui_MainWindow(object):
         newView = self.api.View(self.api, self.api.activeWindow, qwclass=self.tab)
         self.api.activeWindow.views.append(newView)
 
-        self.widgets.tabWidget.addTab(self.tab, "")
-        self.widgets.tabWidget.setTabText(self.widgets.tabWidget.indexOf(self.tab), name or "Untitled")
+        self.tabWidget.addTab(self.tab, "")
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), name or "Untitled")
         self.api.activeWindow.setTab(-1)
 
         self.api.activeWindow.focus(newView)
 
         self.api.activeWindow.signals.tabCreated.emit()
 
+    def getCommand(self, name):
+        return getattr(sys.modules[__name__], name, None)
+
     def defineLocale(self):
         return QtCore.QLocale.system().name().split("_")[0]
+
+    def translate(self, d):
+        if os.path.isdir(d) and os.path.isfile(os.path.join(d, f"{self.locale}.vt-locale")):
+            if self.translator.load(os.path.join(d, f"{self.locale}.vt-locale")):
+                QtCore.QCoreApplication.installTranslator(self.translator)
 
     def settings(self):
         try:
@@ -153,6 +194,12 @@ class Ui_MainWindow(object):
         else:
             QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.api.pluginsDir, 'Open&Save')}")
 
+    def closeEvent(self, e: QtCore.QEvent):
+        if self.saveState: self.saveWState()
+        self.api.activeWindow.signals.windowClosed.emit()
+
+        e.accept()
+
     def windowInitialize(self):
         [os.makedirs(dir) for dir in [self.api.themesDir, self.api.pluginsDir, self.api.uiDir] if not os.path.isdir(dir)]
         self.tabLog = {}
@@ -190,10 +237,10 @@ class Ui_MainWindow(object):
             if self.api.activeWindow.activeView.getFile(): self.api.activeWindow.signals.fileOpened.emit(self.api.activeWindow.activeView)
         self.api.activeWindow.setTreeWidgetDir(self.api.findKey("state.treeWidget.openedDir", self.api.STATEFILE) or "/")
         if self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE):
-            self.widgets.tabWidget.setCurrentIndex(int(self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE)))
-        if self.api.findKey(f"state.splitter.data", self.api.STATEFILE): self.widgets.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE))
-        self.widgets.tabWidget.tabBar().setMovable(self.api.findKey("state.tabWidget.tabBar.movable", self.api.STATEFILE) or 1)
-        self.widgets.tabWidget.tabBar().setTabsClosable(self.api.findKey("state.tabWidget.tabBar.closable", self.api.STATEFILE) or 1)
+            self.tabWidget.setCurrentIndex(int(self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE)))
+        if self.api.findKey(f"state.splitter.data", self.api.STATEFILE): self.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE))
+        self.tabWidget.tabBar().setMovable(self.api.findKey("state.tabWidget.tabBar.movable", self.api.STATEFILE) or 1)
+        self.tabWidget.tabBar().setTabsClosable(self.api.findKey("state.tabWidget.tabBar.closable", self.api.STATEFILE) or 1)
         self.api.activeWindow.signals.windowStateRestoring.emit()
 
     def saveWState(self):
@@ -202,10 +249,10 @@ class Ui_MainWindow(object):
         tabWidgetTabsState = {}
         self.api.addKey("settings.themeFile", self.themeFile, self.api.STATEFILE)
         self.api.addKey("settings.locale", self.locale, self.api.STATEFILE)
-        self.api.addKey("state.splitter.data", self.widgets.treeSplitter.saveState().data(), self.api.STATEFILE)
-        self.api.addKey("state.tabWidget.tabBar.movable", self.widgets.tabWidget.tabBar().isMovable(), self.api.STATEFILE)
-        self.api.addKey("state.tabWidget.tabBar.closable", self.widgets.tabWidget.tabBar().tabsClosable(), self.api.STATEFILE)
-        index = self.widgets.treeView.currentIndex()
+        self.api.addKey("state.splitter.data", self.treeSplitter.saveState().data(), self.api.STATEFILE)
+        self.api.addKey("state.tabWidget.tabBar.movable", self.tabWidget.tabBar().isMovable(), self.api.STATEFILE)
+        self.api.addKey("state.tabWidget.tabBar.closable", self.tabWidget.tabBar().tabsClosable(), self.api.STATEFILE)
+        index = self.treeView.currentIndex()
         if self.api.activeWindow.model.isDir(index): self.api.addKey("state.treeWidget.openedDir", self.api.activeWindow.model.filePath(index), self.api.STATEFILE)
         if self.api.activeWindow.activeView in self.api.activeWindow.views: self.api.addKey("state.tabWidget.activeTab", str(self.api.activeWindow.activeView.tabIndex()), self.api.STATEFILE)
         stateFile = os.path.join(self.api.packagesDirs, '.ws')
@@ -235,25 +282,30 @@ class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
         w = MainWindow(api, restoreState=False)
         w.show()
 
-class MainWindow(QtWidgets.QMainWindow):
+class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
         super().__init__()
-        self.api: VtAPI = api
+
+        self.api = api
         self.logger = Logger(self)
 
+        self.textContextMenu = QtWidgets.QMenu(self)
+        self.tabBarContextMenu = QtWidgets.QMenu(self)
+
+        self.setupUi(self, self.argvParse(), self.api)
         self.w = self.api.Window(self.api, qmwclass=self)
         self.api.addWindow(self.w)
         self.api.activeWindow = self.w
-        self.textContextMenu = QtWidgets.QMenu(self)
-        self.tabBarContextMenu = QtWidgets.QMenu(self)
-        self.ui = Ui_MainWindow(self, sys.argv, self.api)
-
-        self.ui.windowInitialize()
+        self.windowInitialize()
         self.installEventFilter(self)
         self.pl = PluginManager(self.api.pluginsDir, self)
-        if self.ui.menuFile and os.path.isfile(self.ui.menuFile): self.pl.loadMenu(self.ui.menuFile, None, os.path.dirname(self.ui.menuFile))
+        if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
+        if os.path.isdir(os.path.join(self.api.uiDir, "locale")): self.translate(os.path.join(self.api.uiDir, "locale"))
 
         # Commands register area
+
+        self.treeView.doubleClicked.connect(self.api.activeWindow.signals.onDoubleClicked)
+        self.tabWidget.currentChanged.connect(self.api.activeWindow.signals.tabChngd)
 
         #####################################
 
@@ -261,23 +313,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.api.activeWindow.signals.windowStarted.emit()
 
-        if restoreState: self.ui.restoreWState()
+        if restoreState: self.restoreWState()
 
         self.api.activeWindow.openFiles([sys.argv[1]] if len(sys.argv) > 1 else [])
         if self.api.activeWindow.activeView: self.api.activeWindow.activeView.update()
-
-        self.api.STATEFILE = {}
-        self.api.activeWindow.signals.windowRunningStateInited.emit()
-
         self.show()
-
-    def translate(self, d):
-        if os.path.isdir(d) and os.path.isfile(os.path.join(d, f"{self.ui.locale}.vt-locale")):
-            if self.ui.widgets.translator.load(os.path.join(d, f"{self.ui.locale}.vt-locale")):
-                QtCore.QCoreApplication.installTranslator(self.ui.widgets.translator)
-
-    def getCommand(self, name):
-        return getattr(sys.modules[__name__], name, None)
 
     def argvParse(self):
         return sys.argv
@@ -324,12 +364,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         action = self.pl.findActionShortcut(modifier_string + key_text)
         if action: action.trigger()
-
-    def closeEvent(self, e: QtCore.QEvent):
-        if self.saveState: self.ui.saveWState()
-        self.api.activeWindow.signals.windowClosed.emit()
-
-        e.accept()
 
 def main():
     global api

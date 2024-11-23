@@ -344,7 +344,7 @@ class VtAPI:
             self.model = QtGui.QFileSystemModel()
 
         def newFile(self) -> 'VtAPI.View':
-            self.__mw.ui.addTab()
+            self.__mw.addTab()
             return self.activeView
         
         def openFiles(self, files):
@@ -465,8 +465,8 @@ class VtAPI:
             self.__tab: QtWidgets.QWidget = qwclass
             if self.__tab:
                 self.id: str = self.__tab.objectName().split("-")[-1]
-                self.__tabWidget: QtWidgets.QTabWidget = self.window()._Window__mw.ui.widgets.tabWidget
-                self.tagBase = window._Window__mw.ui.tagBase
+                self.__tabWidget: QtWidgets.QTabWidget = self.window()._Window__mw.tabWidget
+                self.tagBase = window._Window__mw.tagBase
             else:
                 self.id = None
                 self.__tabWidget = None
