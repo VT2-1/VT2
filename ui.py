@@ -60,20 +60,19 @@ class Ui_MainWindow(object):
     sys.path.insert(0, ".")
     def __init__(self, MainWindow, argv=[], api=None):
         self.MainWindow: QtWidgets.QMainWindow = MainWindow
-        self.appPath = os.path.basename(__file__)
         self.appPath = os.path.dirname(argv[0])
-        self.themeFile = ""
+        self.api: VtAPI = api
+        self.settings()
         self.localeDirs = []
 
-        module = importModule(os.path.join(os.path.dirname(__file__), "ui", "UiClass.py"), "UiClass")
+        module = importModule(os.path.join(self.api.uiDir, "UiClass.cpython-310.pyc"), "UiClass")
         wClass = getattr(module, "Ui_MainWindow")
         self.widgets = wClass(self.MainWindow, argv, api)
         self.widgets.setupUi()
 
-        self.api: VtAPI = self.MainWindow.api
-        self.settings()
         self.tagBase = TagDB(os.path.join(self.api.packagesDirs, ".ft"))
         self.logger = self.MainWindow.logger
+        self.api.activeWindow.setLogMsg(f"{self.api.appName} created ui", "green")
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
 
     def addTab(self, name: str = "", text: str = "", i: int = -1, file=None, canSave=True, canEdit=True, encoding="UTF-8"):
@@ -137,6 +136,7 @@ class Ui_MainWindow(object):
         self.MainWindow.logStdout = self.settData.get("logStdout") or False
         self.saveState = self.settData.get("saveState") or True
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
+        self.themeFile = ""
         if self.settData.get("menu"): self.menuFile = self.api.replacePaths(os.path.join(self.api.packagesDirs, self.settData.get("menu")))
         else: self.menuFile = None
         os.chdir(self.api.packagesDirs)
@@ -199,22 +199,15 @@ class Ui_MainWindow(object):
     def saveWState(self):
         stateDict = {}
         self.api.STATEFILE = stateDict
-        settingsState = stateDict["settings"] = {}
-        windowState = stateDict["state"] = {}
-        splitterState = stateDict["state"]["splitter"] = {}
-        tabWidgetState = stateDict["state"]["tabWidget"] = {}
-        tabBarState = stateDict["state"]["tabWidget"]["tabBar"] = {}
-        tabWidgetTabsState = stateDict["state"]["tabWidget"]["tabs"] = {}
-        treeWidgetState = stateDict["state"]["treeWidget"] = {}
-        toDoList = stateDict["state"]["toDoList"] = {}
-        settingsState["themeFile"] = self.themeFile
-        settingsState["locale"] = self.locale
+        tabWidgetTabsState = {}
+        self.api.addKey("settings.themeFile", self.themeFile, self.api.STATEFILE)
+        self.api.addKey("settings.locale", self.locale, self.api.STATEFILE)
+        self.api.addKey("state.splitter.data", self.widgets.treeSplitter.saveState().data(), self.api.STATEFILE)
+        self.api.addKey("state.tabWidget.tabBar.movable", self.widgets.tabWidget.tabBar().isMovable(), self.api.STATEFILE)
+        self.api.addKey("state.tabWidget.tabBar.closable", self.widgets.tabWidget.tabBar().tabsClosable(), self.api.STATEFILE)
         index = self.widgets.treeView.currentIndex()
-        tabBarState["movable"] = self.widgets.tabWidget.tabBar().isMovable()
-        tabBarState["closable"] = self.widgets.tabWidget.tabBar().tabsClosable()
-        if self.api.activeWindow.model.isDir(index): treeWidgetState["openedDir"] = self.api.activeWindow.model.filePath(index)
-        if self.api.activeWindow.activeView in self.api.activeWindow.views: tabWidgetState["activeTab"] = str(self.api.activeWindow.activeView.tabIndex())
-        splitterState["data"] = self.widgets.treeSplitter.saveState().data()
+        if self.api.activeWindow.model.isDir(index): self.api.addKey("state.treeWidget.openedDir", self.api.activeWindow.model.filePath(index), self.api.STATEFILE)
+        if self.api.activeWindow.activeView in self.api.activeWindow.views: self.api.addKey("state.tabWidget.activeTab", str(self.api.activeWindow.activeView.tabIndex()), self.api.STATEFILE)
         stateFile = os.path.join(self.api.packagesDirs, '.ws')
         for view in self.api.activeWindow.views:
             cursor = view.getTextCursor()
@@ -230,15 +223,11 @@ class Ui_MainWindow(object):
                 # "modified": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "mmapHidden": view.isMmapHidden()
             }
-        tabWidgetTabsState = {str(idx): tabWidgetTabsState[str(idx)] for idx in range(len(tabWidgetTabsState))}
+        self.api.addKey("state.tabWidget.tabs", {str(idx): tabWidgetTabsState[str(idx)] for idx in range(len(tabWidgetTabsState))}, self.api.STATEFILE)
         self.api.activeWindow.signals.windowStateSaving.emit()
-        if os.path.isfile(stateFile):
-            mode = 'wb'
-        else:
-            mode = 'ab'
-        with open(stateFile, mode) as f:
-            packed_data = msgpack.packb(stateDict, use_bin_type=True)
-            f.write(packed_data)
+        if os.path.isfile(stateFile): mode = 'wb'
+        else: mode = 'ab'
+        with open(stateFile, mode) as f: f.write(msgpack.packb(stateDict, use_bin_type=True))
         self.settFile.close()
 
 class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
@@ -257,13 +246,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.api.activeWindow = self.w
         self.textContextMenu = QtWidgets.QMenu(self)
         self.tabBarContextMenu = QtWidgets.QMenu(self)
-
         self.ui = Ui_MainWindow(self, sys.argv, self.api)
 
         self.ui.windowInitialize()
         self.installEventFilter(self)
         self.pl = PluginManager(self.api.pluginsDir, self)
-        if self.ui.menuFile and os.path.isfile(self.ui.menuFile): self.pl.loadMenu(self.ui.menuFile, "__main__", os.path.dirname(self.ui.menuFile))
+        if self.ui.menuFile and os.path.isfile(self.ui.menuFile): self.pl.loadMenu(self.ui.menuFile, None, os.path.dirname(self.ui.menuFile))
 
         # Commands register area
 

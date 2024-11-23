@@ -78,13 +78,13 @@ class PluginManager:
                 pyFile = self.mainFile
                 try:
                     with SafeImporter(BLOCKED):
-                        sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
-                        sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
+                        # sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
+                        # sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
                         sys.path.insert(0, fullPath)
                         self.module = self.importModule(pyFile, self.name + "Plugin")
                         if hasattr(self.module, "initAPI"):
                             self.module.initAPI(self.__windowApi)
-                        sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
+                        # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                 except Exception as e:
                     self.__windowApi.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
                 finally:
@@ -95,7 +95,7 @@ class PluginManager:
     def loadMenu(self, f, module=None, path=None):
         try:
             menuFile = json.load(open(f, "r+"))
-            localeDir = os.path.join(path if module else "", "locale")
+            localeDir = os.path.join(path if path else "", "locale")
             if os.path.isdir(localeDir):
                 self.__window.translate(localeDir)
             for menu in menuFile:
