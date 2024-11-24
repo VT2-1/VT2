@@ -23,17 +23,7 @@ class Logger:
     @log.setter
     def log(self, value):
         self._log = value
-        if self.__window.api.activeWindow:
-            dock = self.__window.api.activeWindow.isDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea)
-            if dock:
-                try:
-                    console = dock.textEdit
-                    console.clear()
-                    console.textCursor().insertHtml(f"<br>{value}")
-                    scrollbar = console.verticalScrollBar()
-                    scrollbar.setValue(scrollbar.maximum())
-                    self.__window.api.activeWindow.signals.logWrited.emit(value)
-                except: pass
+        self.__window.api.activeWindow.signals.logWrited.emit(value)
 
     def write(self, message):
         if message:
@@ -306,6 +296,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.treeView.doubleClicked.connect(self.api.activeWindow.signals.onDoubleClicked)
         self.tabWidget.currentChanged.connect(self.api.activeWindow.signals.tabChngd)
+        self.tabWidget.tabCloseRequested.connect(lambda: self.api.activeWindow.runCommand({"command": "CloseTabCommand"}))
 
         #####################################
 

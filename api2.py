@@ -1,5 +1,6 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-import os, sys, json, importlib, re, platform, inspect, asyncio
+import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil
+import urllib.request as requests
 import importlib.util
 import os
 import builtins
@@ -41,7 +42,7 @@ class PluginManager:
         self.__menu_map = {}
         self.shortcuts = []
         self.regCommands = {}
-        self.dPath = None
+        self.dPath = os.getcwd()
 
     def importModule(self, path, n):
         spec = importlib.util.spec_from_file_location(n, path)
@@ -52,7 +53,6 @@ class PluginManager:
 
     def loadPlugins(self):
         try:
-            self.dPath = os.getcwd()
             sys.path.insert(0, self.plugin_directory)
             for plugDir in os.listdir(self.plugin_directory):
                 self.fullPath = os.path.join(self.plugin_directory, plugDir)
@@ -61,6 +61,35 @@ class PluginManager:
             if self.plugins.get("Basic"):
                 self.loadPlugin("Basic")
                 self.plugins.pop("Basic")
+            else:
+                url = "https://github.com/cherry220-v/Basic"
+                self.__windowApi.activeWindow.setLogMsg(f"Plugin 'Basic' not found. Trying to install last version from {url}")
+                try:
+                    tempdirName = "vt-basic-install"
+                    path = os.path.join(os.getenv("TEMP") or os.path.dirname(__file__), tempdirName)
+                    os.makedirs(path)
+
+                    filePath = os.path.join(path, "package.zip")
+                    requests.urlretrieve(url + "/zipball/master", filePath)
+                    with zipfile.ZipFile(filePath, 'r') as f:
+                        f.extractall(path)
+                    os.remove(filePath)
+
+                    extracted_dir = next(
+                        os.path.join(path, d) for d in os.listdir(path)
+                        if os.path.isdir(os.path.join(path, d))
+                    )
+                    finalPackageDir = os.path.join(self.__windowApi.packagesDirs, "Plugins", url.split("/")[-1])
+                    os.makedirs(self.__windowApi.packagesDirs, exist_ok=True)
+
+                    shutil.move(extracted_dir, finalPackageDir)
+                    self.loadPlugin("Basic")
+                    self.plugins.pop("Basic")
+                except Exception as e:
+                    print(e)
+                    self.__windowApi.activeWindow.setLogMsg(f"Error when loading plugin from '{url}'", self.__windowApi.ERROR)
+                finally:
+                    shutil.rmtree(path)
             
             for pl in self.plugins:
                 self.loadPlugin(pl)
@@ -492,7 +521,7 @@ class VtAPI:
             return self.__tabWidget.indexOf(self.__tab)
 
         def close(self):
-            return self.__tabWidget.closeTab(self.tabIndex())
+            return self.__tabWidget.closeTab(self.__tab)
 
         def window(self):
             return self.__window

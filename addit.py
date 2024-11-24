@@ -333,7 +333,6 @@ class TabWidget (QtWidgets.QTabWidget):
     def __init__ (self, MainWindow=None, parent=None):
         super(TabWidget, self).__init__(parent)
         self.setTabsClosable(True)
-        self.tabCloseRequested.connect(self.closeTab)
         self.MainWindow = MainWindow
         self.moveRange = None
         self.setObjectName("tabWidget")
@@ -343,7 +342,6 @@ class TabWidget (QtWidgets.QTabWidget):
         self.currentChanged.connect(self.onCurrentChanged)
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.cmRequest)
-
     def cmRequest(self, pos):
         self.MainWindow.tabBarContextMenu.exec(self.mapToGlobal(pos))
 
@@ -379,7 +377,8 @@ class TabWidget (QtWidgets.QTabWidget):
         pos = self.tabBar().mapFromGlobal(QtGui.QCursor.pos())
         self.moveRange = pos.x() - tabRect.left(), tabRect.right() - pos.x()
 
-    def closeTab(self, currentIndex):
+    def closeTab(self, tab):
+        currentIndex = self.indexOf(tab)
         if currentIndex >= 0:
             self.setCurrentIndex(currentIndex)
             tab = self.currentWidget()
