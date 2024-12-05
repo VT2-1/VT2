@@ -354,7 +354,7 @@ class VtAPI:
             self.__app = QtWidgets.QApplication.instance()
         except:
             self.__app: QtWidgets.QApplication = app
-        self.__windows = []
+        self.windows = []
         self.activeWindow: VtAPI.Window | None = None
 
         self.STATEFILE = None
@@ -997,12 +997,11 @@ class VtAPI:
     def activeWindow(self) -> Window:
         return self.activeWindow
 
-    @property
     def windows(self):
-        return tuple(self.__windows)
+        return self.windows
     
     def addWindow(self, window: Window):
-        self.__windows.append(window)
+        self.windows.append(window)
 
     def loadSettings(self, path=None, pl=None):
         if pl and not path:

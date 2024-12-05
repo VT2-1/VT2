@@ -202,7 +202,7 @@ class Ui_MainWindow(object):
                     self.tabLog = msgpack.unpackb(packed_data, raw=False)
                     self.api.STATEFILE = self.tabLog
         except ValueError:
-            self.logger.log += f"\nFailed to restore window state. No file found at {stateFile}"  
+            self.api.activeWindow.setLogMsg(f"\nFailed to restore window state. No file found at {stateFile}", self.api.ERROR)
             self.tabLog = {}
         if self.api.findKey("settings.themeFile", self.api.STATEFILE): self.themeFile = self.api.findKey("settings.themeFile", self.api.STATEFILE)
         if self.api.findKey("settings.locale", self.api.STATEFILE): self.locale = self.api.findKey("settings.locale", self.api.STATEFILE)
