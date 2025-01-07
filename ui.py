@@ -228,7 +228,6 @@ class Ui_MainWindow(object):
             self.api.activeWindow.activeView.setTextSelection(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE.get(self.wId))[0], self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE.get(self.wId))[1])
             self.api.activeWindow.activeView.setMmapHidden(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.mmapHidden", self.api.STATEFILE.get(self.wId)) or 0)
             if self.api.activeWindow.activeView.getFile(): self.api.activeWindow.signals.fileOpened.emit(self.api.activeWindow.activeView)
-        print(self.api.findKey("state.treeWidget.openedDir", self.api.STATEFILE.get(self.wId)))
         self.api.activeWindow.setTreeWidgetDir(self.api.findKey("state.treeWidget.openedDir", self.api.STATEFILE.get(self.wId)) or "/")
         if self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE.get(self.wId)):
             self.tabWidget.setCurrentIndex(int(self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE.get(self.wId))))

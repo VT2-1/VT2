@@ -6,6 +6,8 @@ import os
 import builtins
 import traceback
 
+from api import VtAPI
+
 BLOCKED = [
     "PyQt6"
 ]
@@ -419,7 +421,7 @@ class VtAPI:
             for action in items:
                 if issubclass(action, QtGui.QAction):
                     self.__mw.addAction(action)
-        
+
         def getCommand(self, name):
             return self.__mw.pl.regCommands.get(name)
 
@@ -565,6 +567,9 @@ class VtAPI:
         def getCanEdit(self):
             return self.__tab.canEdit
 
+        def isReadOnly(self):
+            return self.__tab.canEdit
+
         def setReadOnly(self, b: bool):
             self.__tab.canEdit = b
             self.__tab.textEdit.setReadOnly(b)
@@ -639,19 +644,16 @@ class VtAPI:
         def isDirty(self):
             return self.__window.tabWidget.isSaved(self.__tab)
 
-        def isReadOnly(self):
-            return self.read_only
-
         def getTextSelection(self):
             return self.__tab.textEdit.textCursor().selectedText()
 
         def getTextCursor(self):
             return self.__tab.textEdit.textCursor()
 
-        def setTextSelection(self, s, e):
+        def setTextSelection(self, region: "VtAPI.Region"):
             cursor = self.__tab.textEdit.textCursor()
-            cursor.setPosition(s)
-            cursor.setPosition(e, QtGui.QTextCursor.MoveMode.KeepAnchor)
+            cursor.setPosition(region.begin())
+            cursor.setPosition(region.end(), QtGui.QTextCursor.MoveMode.KeepAnchor)
             self.__tab.textEdit.setTextCursor(cursor)
 
         def getCompletePos(self):
@@ -671,7 +673,7 @@ class VtAPI:
         def setCompleteList(self, lst):
             self.completer = self.__tab.textEdit.completer.updateCompletions(lst)
 
-        def setHighlighter(self, hl):
+        def setHighlighter(self, hl: dict):
             self.__tab.textEdit.highLighter.highlightingRules = hl
 
         def rehighlite(self):
@@ -811,6 +813,37 @@ class VtAPI:
             if dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted:
                 return line_edit.text(), dlg
             return None, dlg
+
+    class File:
+        def __init__(self, path: str = None, encoding="utf-8"):
+            self.path = path
+            self.encoding = encoding
+    
+        def read(self, chunk=1024):
+            if self.exists() and not os.path.isdir(self.path):
+                lines = []
+                with open(self.path, "r+", encoding=self.encoding, errors="ignore") as file:
+                    while chunk_data := file.read(chunk):
+                        lines.append(chunk_data)
+                return lines
+
+        def exists(self): return os.path.isfile(self.path)
+
+        def create(self, rewrite=False):
+            if rewrite:
+                open(self.path, "a+", encoding=self.encoding).close()
+            elif not self.exists(): open(self.path, "a+", encoding=self.encoding).close()
+
+    class Theme:
+        def __init__(self, name: str | None = None, path: str | None = None):
+            self.name = name
+            self.path = path
+
+        def use(self, window: "VtAPI.Window" = None):
+            window.setTheme(self.path)
+
+        def exists(self):
+            return os.path.isfile(self.path)
 
     class Plugin:
         class TextCommand:
@@ -997,6 +1030,14 @@ class VtAPI:
         class Process(QtCore.QProcess):
             def __init__(self):
                 super().__init__()
+        
+        class ToolBar(QtWidgets.QToolBar):
+            def __init__(self, *args, **kwargs):
+                super.__init__(*args, **kwargs)
+        
+        class Action(QtGui.QAction):
+            def __init__(self, *args, **kwargs):
+                super.__init__(*args, **kwargs)
 
     def activeWindow(self) -> Window:
         return self.activeWindow
