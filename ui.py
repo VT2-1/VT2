@@ -46,6 +46,7 @@ class Ui_MainWindow(object):
         self.MainWindow: QtWidgets.QMainWindow = MainWindow
         self.appPath = os.path.basename(__file__)
         self.appPath = os.path.dirname(argv[0])
+        self.wId = f"window-{str(uuid.uuid4())[:4]}"
         self.themeFile = ""
         self.localeDirs = []
         self.api: VtAPI = api
@@ -200,37 +201,40 @@ class Ui_MainWindow(object):
                 with open(stateFile, 'rb') as f:
                     packed_data = f.read()
                     self.tabLog = msgpack.unpackb(packed_data, raw=False)
-                    self.api.STATEFILE = self.tabLog
+                    self.api.STATEFILE[self.wId] = self.tabLog
         except ValueError:
             self.api.activeWindow.setLogMsg(f"\nFailed to restore window state. No file found at {stateFile}", self.api.ERROR)
             self.tabLog = {}
-        if self.api.findKey("settings.themeFile", self.api.STATEFILE): self.themeFile = self.api.findKey("settings.themeFile", self.api.STATEFILE)
-        if self.api.findKey("settings.locale", self.api.STATEFILE): self.locale = self.api.findKey("settings.locale", self.api.STATEFILE)
-        else: self.locale = self.api.findKey("settings.locale", self.api.STATEFILE)
+        print(self.api.findKey("settings.themeFile", self.api.STATEFILE.get(self.wId)))
+        if self.api.findKey("settings.themeFile", self.api.STATEFILE.get(self.wId)): self.themeFile = self.api.findKey("settings.themeFile", self.api.STATEFILE.get(self.wId))
+        if self.api.findKey("settings.locale", self.api.STATEFILE.get(self.wId)): self.locale = self.api.findKey("settings.locale", self.api.STATEFILE.get(self.wId))
+        else: self.locale = self.api.findKey("settings.locale", self.api.STATEFILE.get(self.wId))
         if self.locale == "auto" or not self.locale:
             self.locale = self.defineLocale()
         # self.locale = "ru" # Проверка ./locale/
         self.api.activeWindow.setTheme(self.themeFile)
 
     def restoreWState(self):
-        for idx, tab in enumerate(self.api.findKey("state.tabWidget.tabs", self.api.STATEFILE) or []):
-            tab = self.api.findKey(f"state.tabWidget.tabs.{str(idx)}", self.api.STATEFILE)
+        print(self.api.STATEFILE.get(self.wId))
+        for idx, tab in enumerate(self.api.findKey("state.tabWidget.tabs", self.api.STATEFILE.get(self.wId)) or []):
+            tab = self.api.findKey(f"state.tabWidget.tabs.{str(idx)}", self.api.STATEFILE.get(self.wId))
             self.addTab()
-            self.api.activeWindow.activeView.setTitle(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.name", self.api.STATEFILE))
-            self.api.activeWindow.activeView.setFile(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.file", self.api.STATEFILE))
-            self.api.activeWindow.activeView.setText(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.text", self.api.STATEFILE))
-            self.api.activeWindow.activeView.setCanSave(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.canSave", self.api.STATEFILE))
-            self.api.activeWindow.activeView.setSaved(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.isSaved", self.api.STATEFILE))
+            self.api.activeWindow.activeView.setTitle(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.name", self.api.STATEFILE.get(self.wId)))
+            self.api.activeWindow.activeView.setFile(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.file", self.api.STATEFILE.get(self.wId)))
+            self.api.activeWindow.activeView.setText(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.text", self.api.STATEFILE.get(self.wId)))
+            self.api.activeWindow.activeView.setCanSave(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.canSave", self.api.STATEFILE.get(self.wId)))
+            self.api.activeWindow.activeView.setSaved(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.isSaved", self.api.STATEFILE.get(self.wId)))
             self.api.activeWindow.setTitle(os.path.normpath(self.api.activeWindow.activeView.getFile() or 'Untitled'))
-            self.api.activeWindow.activeView.setTextSelection(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE)[0], self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE)[1])
-            self.api.activeWindow.activeView.setMmapHidden(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.mmapHidden", self.api.STATEFILE) or 0)
+            self.api.activeWindow.activeView.setTextSelection(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE.get(self.wId))[0], self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE.get(self.wId))[1])
+            self.api.activeWindow.activeView.setMmapHidden(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.mmapHidden", self.api.STATEFILE.get(self.wId)) or 0)
             if self.api.activeWindow.activeView.getFile(): self.api.activeWindow.signals.fileOpened.emit(self.api.activeWindow.activeView)
-        self.api.activeWindow.setTreeWidgetDir(self.api.findKey("state.treeWidget.openedDir", self.api.STATEFILE) or "/")
-        if self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE):
-            self.tabWidget.setCurrentIndex(int(self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE)))
-        if self.api.findKey(f"state.splitter.data", self.api.STATEFILE): self.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE))
-        self.tabWidget.tabBar().setMovable(self.api.findKey("state.tabWidget.tabBar.movable", self.api.STATEFILE) or 1)
-        self.tabWidget.tabBar().setTabsClosable(self.api.findKey("state.tabWidget.tabBar.closable", self.api.STATEFILE) or 1)
+        print(self.api.findKey("state.treeWidget.openedDir", self.api.STATEFILE.get(self.wId)))
+        self.api.activeWindow.setTreeWidgetDir(self.api.findKey("state.treeWidget.openedDir", self.api.STATEFILE.get(self.wId)) or "/")
+        if self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE.get(self.wId)):
+            self.tabWidget.setCurrentIndex(int(self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE.get(self.wId))))
+        if self.api.findKey(f"state.splitter.data", self.api.STATEFILE.get(self.wId)): self.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE.get(self.wId)))
+        self.tabWidget.tabBar().setMovable(self.api.findKey("state.tabWidget.tabBar.movable", self.api.STATEFILE.get(self.wId)) or 1)
+        self.tabWidget.tabBar().setTabsClosable(self.api.findKey("state.tabWidget.tabBar.closable", self.api.STATEFILE.get(self.wId)) or 1)
         self.api.activeWindow.signals.windowStateRestoring.emit()
 
     def saveWState(self):
@@ -243,7 +247,7 @@ class Ui_MainWindow(object):
         self.api.addKey("state.tabWidget.tabBar.movable", self.tabWidget.tabBar().isMovable(), self.api.STATEFILE)
         self.api.addKey("state.tabWidget.tabBar.closable", self.tabWidget.tabBar().tabsClosable(), self.api.STATEFILE)
         index = self.treeView.currentIndex()
-        if self.api.activeWindow.model.isDir(index): self.api.addKey("state.treeWidget.openedDir", self.api.activeWindow.model.filePath(index), self.api.STATEFILE)
+        if self.api.activeWindow.model.isDir(index): self.api.addKey("state.treeWidget.openedDir", self.api.activeWindow.model.rootPath(), self.api.STATEFILE)
         if self.api.activeWindow.activeView in self.api.activeWindow.views: self.api.addKey("state.tabWidget.activeTab", str(self.api.activeWindow.activeView.tabIndex()), self.api.STATEFILE)
         stateFile = os.path.join(self.api.packagesDirs, '.ws')
         for view in self.api.activeWindow.views:
@@ -283,7 +287,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.tabBarContextMenu = QtWidgets.QMenu(self)
 
         self.setupUi(self, self.argvParse(), self.api)
-        self.w = self.api.Window(self.api, qmwclass=self)
+        self.w = self.api.Window(self.api, id=self.wId, qmwclass=self)
         self.api.addWindow(self.w)
         self.api.activeWindow = self.w
         self.windowInitialize()
@@ -292,7 +296,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
         if os.path.isdir(os.path.join(self.api.uiDir, "locale")): self.translate(os.path.join(self.api.uiDir, "locale"))
 
-        # Commands register area
+        # Commands/signals register area
 
         self.treeView.doubleClicked.connect(self.api.activeWindow.signals.onDoubleClicked)
         self.tabWidget.currentChanged.connect(self.api.activeWindow.signals.tabChngd)

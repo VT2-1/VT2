@@ -357,20 +357,21 @@ class VtAPI:
         self.windows = []
         self.activeWindow: VtAPI.Window | None = None
 
-        self.STATEFILE = None
+        self.STATEFILE = {}
 
         self.INFO = ""
         self.WARNING = "yellow"
         self.ERROR = "red"
 
     class Window:
-        def __init__(self, api, views=None, activeView=None, qmwclass: QtWidgets.QMainWindow | None = None):
+        def __init__(self, api, views=None, activeView=None, id=None, qmwclass: QtWidgets.QMainWindow | None = None):
             self.api: VtAPI = api
             self.__mw: QtWidgets.QMainWindow = qmwclass
             self.__signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
             self.views = views or []
             self.activeView: VtAPI.View | None = activeView
             self.model = QtGui.QFileSystemModel()
+            self.id = id
 
         def newFile(self) -> 'VtAPI.View':
             self.__mw.addTab()
@@ -389,6 +390,9 @@ class VtAPI:
         def views(self):
             return self.views
         
+        def state(self):
+            return self.api.STATEFILE.get(self.id)
+
         @property
         def signals(self):
             return self.__signals
