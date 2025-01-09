@@ -257,6 +257,14 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     api = VtAPI(app)
     w = MainWindow(api)
+
+    # TEST CODE OF PLUGIN LOADING
+
+    if not "PythonIDE" in api.activeWindow.plugins():
+        otherPlugin = api.Plugin(api, "PythonSyntax", r"C:\Users\Trash\Documents\VarTexter2\Plugins\PythonSyntax")
+        [otherPlugin.load(w) for w in api.windows]
+        otherPlugin2 = api.Plugin(api, "PythonIDE", r"C:\Users\Trash\Documents\VarTexter2\Plugins\PythonIDE")
+        [otherPlugin2.load(w) for w in api.windows]
     sys.exit(app.exec())
 
 if __name__ == "__main__":

@@ -117,8 +117,9 @@ class PluginManager:
                             self.module.initAPI(self.__windowApi)
                         # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                 except Exception as e:
-                    self.__windowApi.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}")
+                    self.__windowApi.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}", self.__windowApi.ERROR)
                 finally:
+                    self.__windowApi.activeWindow.setLogMsg(f"Loaded plugin '{self.name}'", self.__windowApi.INFO)
                     sys.path.pop(0)
             if self.menuFile:
                 self.loadMenu(self.menuFile, module=self.module, path=fullPath)
@@ -395,6 +396,9 @@ class VtAPI:
         
         def state(self):
             return self.api.STATEFILE.get(self.id)
+        
+        def plugins(self):
+            return self.__mw.pl.plugins
 
         def update(self):
             QtCore.QCoreApplication.processEvents()
@@ -877,6 +881,15 @@ class VtAPI:
             return os.path.isfile(self.path)
 
     class Plugin:
+        def __init__(self, api: VtAPI, name: str, path: str):
+            self.api: VtAPI = api
+            self.name = name
+            self.path = path
+        
+        def load(self, window):
+            window._Window__mw.pl.plugins[self.name] = self.path
+            window._Window__mw.pl.loadPlugin(self.name)
+
         class TextCommand:
             def __init__(self, api, view):
                 self.api: VtAPI = api
