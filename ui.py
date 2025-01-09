@@ -1,29 +1,21 @@
-import sys, json, os, uuid
-
 from PyQt6 import QtCore, QtWidgets
-import msgpack
+import sys, uuid
 
 from addit import *
 from api2 import PluginManager, VtAPI
 
 class Ui_MainWindow(object):
-    sys.path.insert(0, ".")
-
     def setupUi(self, MainWindow, argv=[], api=None):
         self.MainWindow: QtWidgets.QMainWindow = MainWindow
-        self.appPath = os.path.basename(__file__)
-        self.appPath = os.path.dirname(argv[0])
+        self.api: VtAPI = api
+        self.appPath = self.api.Path(argv[0]).dirName()
         self.wId = f"window-{str(uuid.uuid4())[:4]}"
         self.themeFile = ""
         self.localeDirs = []
-        self.api: VtAPI = api
         self.settings()
 
-        self.MainWindow.setFocus()
         self.MainWindow.setObjectName("MainWindow")
         self.MainWindow.resize(800, 600)
-
-        self.console = None
 
         self.translator = QtCore.QTranslator()
 
@@ -49,7 +41,6 @@ class Ui_MainWindow(object):
         self.MainWindow.setCentralWidget(self.centralwidget)
 
         self.menubar = QtWidgets.QMenuBar(parent=self.MainWindow)
-        self.menubar.setGeometry(QtCore.QRect(0, 0, 800, 21))
         self.menubar.setObjectName("menuBar")
 
         self.MainWindow.setMenuBar(self.menubar)
@@ -60,19 +51,18 @@ class Ui_MainWindow(object):
         self.statusbar.setObjectName("statusbar")
         self.statusbar.addPermanentWidget(self.encodingLabel)
         self.MainWindow.setStatusBar(self.statusbar)
-
-        self.tagBase = TagDB(os.path.join(self.api.packagesDirs, ".ft"))
+        self.tagBase = TagDB(self.api.Path.joinPath(self.api.packagesDirs, ".ft"))
         self.logger = self.MainWindow.logger
 
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
 
-    def addTab(self, name: str = "", text: str = "", i: int = -1, file=None, canSave=True, canEdit=True, encoding="UTF-8"):
+    def addTab(self):
         self.tab = QtWidgets.QWidget()
-        self.tab.file = file
-        self.tab.canSave = canSave
-        self.tab.canEdit = canEdit
+        self.tab.file = None
+        self.tab.canSave = None
+        self.tab.canEdit = None
         self.tabWidget.tabBar().setTabSaved(self.tab, True)
-        self.tab.encoding = encoding
+        self.tab.encoding = "utf-8"
         self.tab.setObjectName(f"tab-{uuid.uuid4()}")
 
         self.verticalLayout = QtWidgets.QVBoxLayout(self.tab)
@@ -86,8 +76,6 @@ class Ui_MainWindow(object):
 
         self.tab.textEdit = TextEdit(self.MainWindow)
         self.tab.textEdit.setReadOnly(False)
-
-        self.tab.textEdit.safeSetText(text)
         self.tab.textEdit.setObjectName("textEdit")
 
         self.verticalLayout.addLayout(self.tab.textEdit.layout)
@@ -96,59 +84,59 @@ class Ui_MainWindow(object):
         self.api.activeWindow.views.append(newView)
 
         self.tabWidget.addTab(self.tab, "")
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), name or "Untitled")
         self.api.activeWindow.setTab(-1)
-
         self.api.activeWindow.focus(newView)
 
         self.api.activeWindow.signals.tabCreated.emit()
 
-    def getCommand(self, name):
-        return getattr(sys.modules[__name__], name, None)
+    def getCommand(self, name): return getattr(sys.modules[__name__], name, None)
 
-    def defineLocale(self):
-        return QtCore.QLocale.system().name().split("_")[0]
+    def defineLocale(self): return QtCore.QLocale.system().name().split("_")[0]
 
     def translate(self, d):
-        if os.path.isdir(d) and os.path.isfile(os.path.join(d, f"{self.locale}.vt-locale")):
-            if self.translator.load(os.path.join(d, f"{self.locale}.vt-locale")):
+        if self.api.isDir(d) and self.api.File(self.api.Path.joinPath(d, f"{self.locale}.vt-locale")).exists():
+            if self.translator.load(self.api.Path.joinPath(d, f"{self.locale}.vt-locale")):
                 QtCore.QCoreApplication.installTranslator(self.translator)
 
     def settings(self):
         try:
-            self.settFile = open(os.path.join(self.appPath, 'ui/Main.settings'), 'r+', encoding='utf-8')
-            self.settData = json.load(self.settFile)
-        except:
+            self.settFile = self.api.File(self.api.Path.joinPath(self.appPath, 'ui/Main.settings'))
+            if self.settFile.exists():
+                self.settData = self.api.Settings()
+                self.settData.fromFile(self.settFile)
+                self.settData = self.settData.data()
+            else:
+                raise FileNotFoundError("File doesn't exists")
+        except Exception as e:
             self.settData = {}
-            self.api.activeWindow.setLogMsg("Error reading settings. Check /ui/Main.settings file", self.api.ERROR)
+            # self.api.activeWindow.setLogMsg("Error reading settings. Check /ui/Main.settings file", self.api.ERROR)
         self.api.packagesDirs = self.settData.get("packageDirs") or "./Packages/"
         if type(self.api.packagesDirs) == dict:
             self.api.packagesDirs = self.api.replacePaths(self.api.packagesDirs.get(self.api.platform()))
-        self.api.themesDir = self.api.replacePaths(os.path.join(self.api.packagesDirs, "Themes"))
-        self.api.pluginsDir = self.api.replacePaths(os.path.join(self.api.packagesDirs, "Plugins"))
-        self.api.uiDir = self.api.replacePaths(os.path.join(self.api.packagesDirs, "Ui"))
-        self.api.cacheDir = self.api.replacePaths(os.path.join(self.api.packagesDirs, "cache"))
+        self.api.themesDir = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, "Themes"))
+        self.api.pluginsDir = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, "Plugins"))
+        self.api.uiDir = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, "Ui"))
+        self.api.cacheDir = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, "cache"))
         for d in [self.api.packagesDirs, self.api.themesDir, self.api.pluginsDir, self.api.uiDir, self.api.cacheDir]:
-            if not os.path.isdir(d): os.makedirs(d)
+            if not self.api.Path(d).isDir(): self.api.Path(d).create()
         self.api.appName = self.settData.get("appName") or "VT2"
         self.api.__version__ = self.settData.get("apiVersion") or "1.0"
         self.MainWindow.logStdout = self.settData.get("logStdout") or False
         self.saveState = self.settData.get("saveState") or True
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
         self.themeFile = ""
-        if self.settData.get("menu"): self.menuFile = self.api.replacePaths(os.path.join(self.api.packagesDirs, self.settData.get("menu")))
+        if self.settData.get("menu"): self.menuFile = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, self.settData.get("menu")))
         else: self.menuFile = None
-        os.chdir(self.api.packagesDirs)
-        [os.makedirs(dir) for dir in [self.api.themesDir, self.api.pluginsDir, self.api.uiDir] if not os.path.isdir(dir)]
-        self.themeFile = self.api.findKey("themeFile", self.settFile)
-        self.locale = self.api.findKey("locale", self.settFile)
+        self.api.Path.chdir(self.api.packagesDirs)
+        [self.api.Path(dir).create() for dir in [self.api.themesDir, self.api.pluginsDir, self.api.uiDir] if not self.api.Path(dir).isDir()]
+        self.themeFile = self.api.findKey("themeFile", self.settData)
+        self.locale = self.api.findKey("locale", self.settData)
         if self.locale == "auto" or not self.locale:
             self.locale = self.defineLocale()
 
 class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
     def run(self):
-        w = MainWindow(self.api, restoreState=True)
-        w.show()
+        MainWindow(self.api)
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
@@ -167,8 +155,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.api.activeWindow.setTitle("Main")
         self.installEventFilter(self)
         self.pl = PluginManager(self.api.pluginsDir, self)
-        if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
-        if os.path.isdir(os.path.join(self.api.uiDir, "locale")): self.translate(os.path.join(self.api.uiDir, "locale"))
+        if self.menuFile and self.api.Path(self.menuFile).isFile(): self.pl.loadMenu(self.menuFile)
+        if self.api.Path(self.api.Path.joinPath(self.api.uiDir, "locale")).isDir(): self.translate(self.api.Path.joinPath(self.api.uiDir, "locale"))
 
         # Commands/signals register area
 
@@ -179,7 +167,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         #####################################
 
         self.pl.loadPlugins()
-
+        otherPlugin = api.Plugin(api, "PythonSyntax", r"C:\Users\Trash\Documents\VarTexter2\Plugins\PythonSyntax")
+        [otherPlugin.load(w) for w in api.windows]
         self.api.activeWindow.signals.windowStarted.emit()
 
         if restoreState: self.api.activeWindow.signals.windowStateRestoring.emit()
@@ -209,34 +198,21 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             return
 
         modifier_string = ""
-        if modifiers & Qt.KeyboardModifier.ControlModifier:
-            modifier_string += "Ctrl+"
-        if modifiers & Qt.KeyboardModifier.ShiftModifier:
-            modifier_string += "Shift+"
-        if modifiers & Qt.KeyboardModifier.AltModifier:
-            modifier_string += "Alt+"
-
-        if key_code in range(Qt.Key.Key_A, Qt.Key.Key_Z + 1):
-            key_text = chr(ord('A') + key_code - Qt.Key.Key_A)
-        elif key_code in range(Qt.Key.Key_0, Qt.Key.Key_9 + 1):
-            key_text = chr(ord('0') + key_code - Qt.Key.Key_0)
-        elif key_code == Qt.Key.Key_Space:
-            key_text = "Space"
-        elif key_code == Qt.Key.Key_Return:
-            key_text = "Return"
-        elif key_code == Qt.Key.Key_Escape:
-            key_text = "Esc"
-        elif key_code == Qt.Key.Key_Backspace:
-            key_text = "Backspace"
-        elif key_code == Qt.Key.Key_Tab:
-            key_text = "Tab"
+        if modifiers & Qt.KeyboardModifier.ControlModifier: modifier_string += "Ctrl+"
+        if modifiers & Qt.KeyboardModifier.ShiftModifier: modifier_string += "Shift+"
+        if modifiers & Qt.KeyboardModifier.AltModifier: modifier_string += "Alt+"
+        if key_code in range(Qt.Key.Key_A, Qt.Key.Key_Z + 1): key_text = chr(ord('A') + key_code - Qt.Key.Key_A)
+        elif key_code in range(Qt.Key.Key_0, Qt.Key.Key_9 + 1): key_text = chr(ord('0') + key_code - Qt.Key.Key_0)
+        elif key_code == Qt.Key.Key_Space: key_text = "Space"
+        elif key_code == Qt.Key.Key_Return: key_text = "Return"
+        elif key_code == Qt.Key.Key_Escape: key_text = "Esc"
+        elif key_code == Qt.Key.Key_Backspace: key_text = "Backspace"
+        elif key_code == Qt.Key.Key_Tab: key_text = "Tab"
 
         action = self.pl.findActionShortcut(modifier_string + key_text)
         if action: action.trigger()
 
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
+    def dragEnterEvent(self, event): [event.acceptProposedAction() if event.mimeData().hasUrls() else ""]
 
     def dropEvent(self, event):
         files = [url.toLocalFile() for url in event.mimeData().urls()]
@@ -244,13 +220,11 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if openFile:
             self.api.activeWindow.runCommand({"command": "OpenFileCommand", "kwargs": {"f": files}})
         else:
-            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.api.pluginsDir, 'Open&Save')}")
+            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {self.api.Path.joinPath(self.api.pluginsDir, 'Open&Save')}")
 
     def closeEvent(self, e: QtCore.QEvent):
-        if self.saveState:
-            self.api.activeWindow.signals.windowStateSaving.emit()
+        if self.saveState: self.api.activeWindow.signals.windowStateSaving.emit()
         self.api.activeWindow.signals.windowClosed.emit()
-
         e.accept()
 
 def main():
@@ -261,8 +235,6 @@ def main():
     # TEST CODE OF PLUGIN LOADING
 
     if not "PythonIDE" in api.activeWindow.plugins():
-        otherPlugin = api.Plugin(api, "PythonSyntax", r"C:\Users\Trash\Documents\VarTexter2\Plugins\PythonSyntax")
-        [otherPlugin.load(w) for w in api.windows]
         otherPlugin2 = api.Plugin(api, "PythonIDE", r"C:\Users\Trash\Documents\VarTexter2\Plugins\PythonIDE")
         [otherPlugin2.load(w) for w in api.windows]
     sys.exit(app.exec())

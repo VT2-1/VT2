@@ -117,12 +117,14 @@ class PluginManager:
                             self.module.initAPI(self.__windowApi)
                         # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                 except Exception as e:
+                    print(self.name, e)
                     self.__windowApi.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}", self.__windowApi.ERROR)
                 finally:
                     self.__windowApi.activeWindow.setLogMsg(f"Loaded plugin '{self.name}'", self.__windowApi.INFO)
                     sys.path.pop(0)
             if self.menuFile:
                 self.loadMenu(self.menuFile, module=self.module, path=fullPath)
+                os.chdir(self.__windowApi.packagesDirs)
 
     def loadMenu(self, f, module=None, path=None):
         try:
@@ -777,6 +779,9 @@ class VtAPI:
     class Settings:
         def __init__(self, settings=None):
             self.settings = settings or {}
+        
+        def data(self):
+            return self.settings
 
         def get(self, key, default=None):
             return self.settings.get(key, default)
@@ -790,6 +795,10 @@ class VtAPI:
         
         def has(self, key):
             return key in self.settings
+        
+        def fromFile(self, f: "VtAPI.File"):
+            self.content = "".join(f.read())
+            self.settings = json.loads(self.content)
 
     class Dialogs:
         def infoMessage(string, title=None):
@@ -849,10 +858,41 @@ class VtAPI:
                 return line_edit.text(), dlg
             return None, dlg
 
+    class Path:
+        def __init__(self, path: str = None, encoding="utf-8"):
+            self.path = path
+
+        def __str__(self):
+            return self.path
+
+        def exists(self):
+            return os.path.exists(self.path)
+        
+        def isFile(self):
+            return os.path.isfile(self.path)
+        
+        def isDir(self):
+            return os.path.isdir(self.path)
+        
+        def joinPath(*args):
+            return os.path.join(*args)
+        
+        def dirName(self):
+            return os.path.dirname(self.path)
+        
+        def chdir(path):
+            os.chdir(path)
+        
+        def create(self):
+            os.makedirs(self.path)
+
     class File:
         def __init__(self, path: str = None, encoding="utf-8"):
             self.path = path
             self.encoding = encoding
+
+        def __str__(self):
+            return self.path
     
         def read(self, chunk=1024):
             if self.exists() and not os.path.isdir(self.path):
@@ -874,6 +914,9 @@ class VtAPI:
             self.name = name
             self.path = path
 
+        def __str__(self):
+            return self.path
+
         def use(self, window: "VtAPI.Window" = None):
             window.setTheme(self.path)
 
@@ -885,7 +928,10 @@ class VtAPI:
             self.api: VtAPI = api
             self.name = name
             self.path = path
-        
+
+        def __str__(self):
+            return self.path
+
         def load(self, window):
             window._Window__mw.pl.plugins[self.name] = self.path
             window._Window__mw.pl.loadPlugin(self.name)
@@ -1090,6 +1136,8 @@ class VtAPI:
     
     def addWindow(self, window: Window):
         self.windows.append(window)
+
+    def isDir(self, path): return os.path.isdir(path)
 
     def loadSettings(self, path=None, pl=None):
         if pl and not path:
