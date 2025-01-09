@@ -5,7 +5,39 @@ from PyQt6.QtGui import QTextCursor
 from PyQt6.QtSql import QSqlDatabase, QSqlQuery
 
 from typing import List
-import sqlite3
+import sys, io
+
+class Logger:
+    def __init__(self, window):
+        self._log = ""
+        self.__window = window
+        
+        self._stdout_backup = sys.stdout
+        self._log_stream = io.StringIO()
+        sys.stdout = self
+
+    @property
+    def log(self):
+        return self._log
+
+    @log.setter
+    def log(self, value):
+        self._log = value
+        self.__window.api.activeWindow.signals.logWrited.emit(value)
+
+    def write(self, message):
+        if message:
+            if self.__window.logStdout:
+                self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
+                self.__window.api.activeWindow.signals.logWrited.emit(message)
+            self._stdout_backup.write(message)
+
+    def flush(self):
+        pass
+
+    def close(self):
+        sys.stdout = self._stdout_backup
+        self._log_stream.close()
 
 class MiniMap(QtWidgets.QTextEdit):
     def __init__(self, *args, **kwargs):

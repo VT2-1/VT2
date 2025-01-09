@@ -1,43 +1,10 @@
 import sys, json, os, uuid
 
 from PyQt6 import QtCore, QtWidgets
-from datetime import datetime
-import msgpack, io
+import msgpack
 
 from addit import *
 from api2 import PluginManager, VtAPI
-
-class Logger:
-    def __init__(self, window):
-        self._log = ""
-        self.__window = window
-        
-        self._stdout_backup = sys.stdout
-        self._log_stream = io.StringIO()
-        sys.stdout = self
-
-    @property
-    def log(self):
-        return self._log
-
-    @log.setter
-    def log(self, value):
-        self._log = value
-        self.__window.api.activeWindow.signals.logWrited.emit(value)
-
-    def write(self, message):
-        if message:
-            if self.__window.logStdout:
-                self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
-                self.__window.api.activeWindow.signals.logWrited.emit(message)
-            self._stdout_backup.write(message)
-
-    def flush(self):
-        pass
-
-    def close(self):
-        sys.stdout = self._stdout_backup
-        self._log_stream.close()
 
 class Ui_MainWindow(object):
     sys.path.insert(0, ".")
@@ -172,107 +139,15 @@ class Ui_MainWindow(object):
         if self.settData.get("menu"): self.menuFile = self.api.replacePaths(os.path.join(self.api.packagesDirs, self.settData.get("menu")))
         else: self.menuFile = None
         os.chdir(self.api.packagesDirs)
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasUrls():
-            event.acceptProposedAction()
-
-    def dropEvent(self, event):
-        files = [url.toLocalFile() for url in event.mimeData().urls()]
-        openFile = self.api.getCommand("OpenFileCommand")
-        if openFile:
-            self.api.activeWindow.runCommand({"command": "OpenFileCommand", "kwargs": {"f": files}})
-        else:
-            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.api.pluginsDir, 'Open&Save')}")
-
-    def closeEvent(self, e: QtCore.QEvent):
-        if self.saveState: self.saveWState()
-        self.api.activeWindow.signals.windowClosed.emit()
-
-        e.accept()
-
-    def windowInitialize(self):
         [os.makedirs(dir) for dir in [self.api.themesDir, self.api.pluginsDir, self.api.uiDir] if not os.path.isdir(dir)]
-        self.tabLog = {}
-        stateFile = os.path.join(self.api.packagesDirs, '.ws')
-        self.MainWindow.setWindowTitle(self.api.appName)
-        try:
-            if os.path.isfile(stateFile):
-                with open(stateFile, 'rb') as f:
-                    packed_data = f.read()
-                    self.tabLog = msgpack.unpackb(packed_data, raw=False)
-                    self.api.STATEFILE[self.wId] = self.tabLog
-        except ValueError:
-            self.api.activeWindow.setLogMsg(f"\nFailed to restore window state. No file found at {stateFile}", self.api.ERROR)
-            self.tabLog = {}
-        print(self.api.findKey("settings.themeFile", self.api.STATEFILE.get(self.wId)))
-        if self.api.findKey("settings.themeFile", self.api.STATEFILE.get(self.wId)): self.themeFile = self.api.findKey("settings.themeFile", self.api.STATEFILE.get(self.wId))
-        if self.api.findKey("settings.locale", self.api.STATEFILE.get(self.wId)): self.locale = self.api.findKey("settings.locale", self.api.STATEFILE.get(self.wId))
-        else: self.locale = self.api.findKey("settings.locale", self.api.STATEFILE.get(self.wId))
+        self.themeFile = self.api.findKey("themeFile", self.settFile)
+        self.locale = self.api.findKey("locale", self.settFile)
         if self.locale == "auto" or not self.locale:
             self.locale = self.defineLocale()
-        # self.locale = "ru" # Проверка ./locale/
-        self.api.activeWindow.setTheme(self.themeFile)
-
-    def restoreWState(self):
-        print(self.api.STATEFILE.get(self.wId))
-        for idx, tab in enumerate(self.api.findKey("state.tabWidget.tabs", self.api.STATEFILE.get(self.wId)) or []):
-            tab = self.api.findKey(f"state.tabWidget.tabs.{str(idx)}", self.api.STATEFILE.get(self.wId))
-            self.addTab()
-            self.api.activeWindow.activeView.setTitle(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.name", self.api.STATEFILE.get(self.wId)))
-            self.api.activeWindow.activeView.setFile(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.file", self.api.STATEFILE.get(self.wId)))
-            self.api.activeWindow.activeView.setText(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.text", self.api.STATEFILE.get(self.wId)))
-            self.api.activeWindow.activeView.setCanSave(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.canSave", self.api.STATEFILE.get(self.wId)))
-            self.api.activeWindow.activeView.setSaved(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.isSaved", self.api.STATEFILE.get(self.wId)))
-            self.api.activeWindow.setTitle(os.path.normpath(self.api.activeWindow.activeView.getFile() or 'Untitled'))
-            self.api.activeWindow.activeView.setTextSelection(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE.get(self.wId))[0], self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.selection", self.api.STATEFILE.get(self.wId))[1])
-            self.api.activeWindow.activeView.setMmapHidden(self.api.findKey(f"state.tabWidget.tabs.{str(idx)}.mmapHidden", self.api.STATEFILE.get(self.wId)) or 0)
-            if self.api.activeWindow.activeView.getFile(): self.api.activeWindow.signals.fileOpened.emit(self.api.activeWindow.activeView)
-        self.api.activeWindow.setTreeWidgetDir(self.api.findKey("state.treeWidget.openedDir", self.api.STATEFILE.get(self.wId)) or "/")
-        if self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE.get(self.wId)):
-            self.tabWidget.setCurrentIndex(int(self.api.findKey("state.tabWidget.activeTab", self.api.STATEFILE.get(self.wId))))
-        if self.api.findKey(f"state.splitter.data", self.api.STATEFILE.get(self.wId)): self.treeSplitter.restoreState(self.api.findKey(f"state.splitter.data", self.api.STATEFILE.get(self.wId)))
-        self.tabWidget.tabBar().setMovable(self.api.findKey("state.tabWidget.tabBar.movable", self.api.STATEFILE.get(self.wId)) or 1)
-        self.tabWidget.tabBar().setTabsClosable(self.api.findKey("state.tabWidget.tabBar.closable", self.api.STATEFILE.get(self.wId)) or 1)
-        self.api.activeWindow.signals.windowStateRestoring.emit()
-
-    def saveWState(self):
-        stateDict = {}
-        self.api.STATEFILE = stateDict
-        tabWidgetTabsState = {}
-        self.api.addKey("settings.themeFile", self.themeFile, self.api.STATEFILE)
-        self.api.addKey("settings.locale", self.locale, self.api.STATEFILE)
-        self.api.addKey("state.splitter.data", self.treeSplitter.saveState().data(), self.api.STATEFILE)
-        self.api.addKey("state.tabWidget.tabBar.movable", self.tabWidget.tabBar().isMovable(), self.api.STATEFILE)
-        self.api.addKey("state.tabWidget.tabBar.closable", self.tabWidget.tabBar().tabsClosable(), self.api.STATEFILE)
-        index = self.treeView.currentIndex()
-        if self.api.activeWindow.model.isDir(index): self.api.addKey("state.treeWidget.openedDir", self.api.activeWindow.model.rootPath(), self.api.STATEFILE)
-        if self.api.activeWindow.activeView in self.api.activeWindow.views: self.api.addKey("state.tabWidget.activeTab", str(self.api.activeWindow.activeView.tabIndex()), self.api.STATEFILE)
-        stateFile = os.path.join(self.api.packagesDirs, '.ws')
-        for view in self.api.activeWindow.views:
-            cursor = view.getTextCursor()
-            start = cursor.selectionStart()
-            end = cursor.selectionEnd()
-            tabWidgetTabsState[str(view.tabIndex())] = {
-                "name": view.getTitle(),
-                "file": view.getFile(),
-                "canSave": view.getCanSave(),
-                "text": view.getText(),
-                "isSaved": view.getSaved(),
-                "selection": [start, end],
-                # "modified": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "mmapHidden": view.isMmapHidden()
-            }
-        self.api.addKey("state.tabWidget.tabs", {str(idx): tabWidgetTabsState[str(idx)] for idx in range(len(tabWidgetTabsState))}, self.api.STATEFILE)
-        self.api.activeWindow.signals.windowStateSaving.emit()
-        if os.path.isfile(stateFile): mode = 'wb'
-        else: mode = 'ab'
-        with open(stateFile, mode) as f: f.write(msgpack.packb(stateDict, use_bin_type=True))
-        self.settFile.close()
 
 class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
     def run(self):
-        w = MainWindow(api, restoreState=False)
+        w = MainWindow(self.api, restoreState=True)
         w.show()
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
@@ -289,7 +164,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.w = self.api.Window(self.api, id=self.wId, qmwclass=self)
         self.api.addWindow(self.w)
         self.api.activeWindow = self.w
-        self.windowInitialize()
+        self.api.activeWindow.setTitle("Main")
         self.installEventFilter(self)
         self.pl = PluginManager(self.api.pluginsDir, self)
         if self.menuFile and os.path.isfile(self.menuFile): self.pl.loadMenu(self.menuFile)
@@ -307,7 +182,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.api.activeWindow.signals.windowStarted.emit()
 
-        if restoreState: self.restoreWState()
+        if restoreState: self.api.activeWindow.signals.windowStateRestoring.emit()
 
         self.api.activeWindow.openFiles([sys.argv[1]] if len(sys.argv) > 1 else [])
         if self.api.activeWindow.activeView: self.api.activeWindow.activeView.update()
@@ -359,8 +234,26 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         action = self.pl.findActionShortcut(modifier_string + key_text)
         if action: action.trigger()
 
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        files = [url.toLocalFile() for url in event.mimeData().urls()]
+        openFile = self.api.activeWindow.getCommand("OpenFileCommand")
+        if openFile:
+            self.api.activeWindow.runCommand({"command": "OpenFileCommand", "kwargs": {"f": files}})
+        else:
+            QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {os.path.join(self.api.pluginsDir, 'Open&Save')}")
+
+    def closeEvent(self, e: QtCore.QEvent):
+        if self.saveState:
+            self.api.activeWindow.signals.windowStateSaving.emit()
+        self.api.activeWindow.signals.windowClosed.emit()
+
+        e.accept()
+
 def main():
-    global api
     app = QtWidgets.QApplication(sys.argv)
     api = VtAPI(app)
     w = MainWindow(api)

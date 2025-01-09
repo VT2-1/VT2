@@ -42,15 +42,22 @@ class QThread():
 class QProcess():
     def __init__(self): """PyQt6.QtCore.QProcess"""
 
-def pyqtSignal(*args): """QtCore.pyqtSignal"""
+class QModelIndex():
+    def __init__(self): """PyQt6.QtCore.QModelIndex"""
+
+def pyqtSignal(*args): """pyqtSignal"""
 
 class VtAPI:
     def __init__(self, app: Optional["QApplication"] = None) -> None:
         """## API stubs for VT2"""
         self.STATEFILE: dict = {}
+        self.CLOSINGSTATEFILE: dict = {}
         self.INFO: str
         self.WARNING: str
         self.ERROR: str
+
+        self.activeWindow: "VtAPI.Window"
+
     class Window:
         """Окно и управление им"""
         def __init__(self, api: "VtAPI", id: str, views: Optional[List['VtAPI.View']] = None, activeView: Optional['VtAPI.View'] = None) -> None:
@@ -62,6 +69,7 @@ api.addWindow(w)
 ```
             """
             self.views: List['VtAPI.View']
+            self.signals: "VtAPI.Signals"
             self.activeView: Optional['VtAPI.View']
             self.model: QFileSystemModel
             self.id = id
@@ -70,8 +78,8 @@ api.addWindow(w)
         def saveFile(self, view: Optional['VtAPI.View'] = None, dlg: bool = False) -> None: """Сохраняет текст вкладки (Запускает стандартную привязанную команду SaveFileCommand)"""
         def activeView(self) -> 'VtAPI.View': """Получает активную вкладку"""
         def views(self) -> List['VtAPI.View']: """Получает список вкладок как View"""
-        @property
-        def signals(self) -> 'VtAPI.Signals': """Получает класс Signals со всеми сигналами окна (Изоляция в отдельный класс для красоты и читаемости кода)"""
+        def state(self) -> dict: """Получает состояние окна"""
+        # def signals(self) -> 'VtAPI.Signals': """Получает класс Signals со всеми сигналами окна (Изоляция в отдельный класс для красоты и читаемости кода)"""
         def setTitle(self, s: str) -> None: """Устанавливает заголовок окна"""
         def focus(self, view: 'VtAPI.View') -> None: """Устанавливает вкладку по View"""
         def registerCommandClass(self, data: dict) -> None: """Регистрирует команду по её классу {'command': ExampleCommandClass} (Новая рабочая конструкция для регистрации команды из плагина)"""
@@ -331,12 +339,28 @@ api.addWindow(w)
         """Класс с сигналами для окна"""
         tabClosed = pyqtSignal(object)
         tabCreated = pyqtSignal()
-        tabChanged = pyqtSignal()
+        tabChanged = pyqtSignal(object, object)
+
         textChanged = pyqtSignal()
+
         windowClosed = pyqtSignal()
         windowStarted = pyqtSignal()
+        windowStateRestoring = pyqtSignal()
+        windowRunningStateInited = pyqtSignal()
+        windowStateSaving = pyqtSignal()
+
+        logWrited = pyqtSignal(str)
+
+        treeWidgetClicked = pyqtSignal(QModelIndex)
+        treeWidgetDoubleClicked = pyqtSignal(QModelIndex)
+        treeWidgetActivated = pyqtSignal()
+
         fileOpened = pyqtSignal(object)
         fileSaved = pyqtSignal(object)
+        fileTagInited = pyqtSignal(object)
+
+        fileTagAdded = pyqtSignal(object, str)
+        fileTagRemoved = pyqtSignal(object, str)
         def __init__(self, w: QMainWindow) -> None: ...
         def addSignal(self, signalName: str, signalArgs: list) -> None: """Команда не работает и крашит приложение, т к PyQt6 не даёт привязывать pyqtSignal динамически"""
         def findSignal(self, signalName: str) -> pyqtSignal: """Ищет сигнал по названию"""
@@ -359,7 +383,7 @@ api.addWindow(w)
             def __init__(self, *args, **kwargs): ...
         class Action(QAction):
             def __init__(self, *args, **kwargs): ...
-    def activeWindow(self) -> 'Window': """Получает активное окно (активным окном считается последнее окно в котором находился курсор)"""
+    def activeWindow(self) -> Optional['VtAPI.Window']: """Получает активное окно (активным окном считается последнее окно в котором находился курсор)"""
     def windows(self) -> List['Window']: """Получает список окон"""
     def addWindow(self, window: 'Window') -> None: """Добавляет окно"""
     def loadSettings(self, path: Optional[str] = None, pl: Optional[str] = None) -> dict: """Загружает настройки по файлу. Не работает и не нужно"""

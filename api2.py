@@ -360,6 +360,7 @@ class VtAPI:
         self.activeWindow: VtAPI.Window | None = None
 
         self.STATEFILE = {}
+        self.CLOSINGSTATEFILE = {}
 
         self.INFO = ""
         self.WARNING = "yellow"
@@ -369,7 +370,7 @@ class VtAPI:
         def __init__(self, api, views=None, activeView=None, id=None, qmwclass: QtWidgets.QMainWindow | None = None):
             self.api: VtAPI = api
             self.__mw: QtWidgets.QMainWindow = qmwclass
-            self.__signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
+            self.signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
             self.views = views or []
             self.activeView: VtAPI.View | None = activeView
             self.model = QtGui.QFileSystemModel()
@@ -395,9 +396,8 @@ class VtAPI:
         def state(self):
             return self.api.STATEFILE.get(self.id)
 
-        @property
-        def signals(self):
-            return self.__signals
+        def update(self):
+            QtCore.QCoreApplication.processEvents()
 
         def setTitle(self, s):
             self.__mw.setWindowTitle(f"{s} - {self.api.appName}")
@@ -406,6 +406,7 @@ class VtAPI:
             if view in self.views:
                 self.__mw.tabWidget.setCurrentIndex(view.tabIndex())
                 self.activeView = view
+                self.setTitle(os.path.normpath(self.activeView.getFile() or 'Untitled'))
 
         def registerCommandClass(self, data):
             self.__mw.pl.registerClass(data)
@@ -434,12 +435,24 @@ class VtAPI:
                 self.__mw.setStyleSheet(open(themePath, "r+").read())
                 self.__mw.themeFile = theme
 
+        def getLocale(self):
+            return self.__mw.locale
+
+        def setLocale(self, s: str, auto=False):
+            if auto: locale = self.__mw.defineLocale()
+            else: locale = s
+            self.__mw.locale = locale
+            return locale
+
         def getLog(self):
             return self.__mw.logger.log
 
         def setLogMsg(self, msg, t=""):
             msg = f"""<i style="color: {t};">{msg}</i>"""
             self.__mw.logger.log += f"<br>{msg}"
+
+        def currentTreeIndex(self):
+            return self.__mw.treeView.currentIndex()
 
         def getTreeModel(self):
             return self.model
@@ -456,6 +469,24 @@ class VtAPI:
 
         def setTab(self, i):
             self.__mw.tabWidget.setCurrentIndex(i - 1)
+
+        def splitterData(self):
+            return self.__mw.treeSplitter.saveState().data()
+
+        def restoreSplitter(self, data):
+            self.__mw.treeSplitter.restoreState(data)
+
+        def isTabsMovable(self):
+            return self.__mw.tabWidget.tabBar().isMovable()
+
+        def isTabsClosable(self):
+            return self.__mw.tabWidget.tabBar().tabsClosable()
+
+        def setTabsMovable(self, b: bool):
+            return self.__mw.tabWidget.tabBar().setMovable(b)
+
+        def setTabsClosable(self, b: bool):
+            return self.__mw.tabWidget.tabBar().setTabsClosable(b)
 
         def updateMenu(self, menu, data):
             menuClass = self.__mw.pl.findMenu(self.__mw.menuBar(), menu)
@@ -926,7 +957,7 @@ class VtAPI:
     class Signals(QtCore.QObject):
         tabClosed = QtCore.pyqtSignal(object)
         tabCreated = QtCore.pyqtSignal()
-        tabChanged = QtCore.pyqtSignal()
+        tabChanged = QtCore.pyqtSignal(object, object)
 
         textChanged = QtCore.pyqtSignal()
 
@@ -971,15 +1002,14 @@ class VtAPI:
                     view.id = widget.objectName().split("-")[-1]
                     for v in self.__windowApi.activeWindow.views:
                         if v == view:
-                            self.__windowApi.activeWindow.activeView = v
-                            self.__windowApi.activeWindow.setTitle(os.path.normpath(self.__windowApi.activeWindow.activeView.getFile() or 'Untitled'))
+                            self.tabChanged.emit(self.__windowApi.activeWindow.activeView, v)
+                            self.__windowApi.activeWindow.focus(v)
                             self.updateEncoding()
                             break
                     else:
                         self.__window.setWindowTitle(self.__windowApi.appName)
                 else:
                     self.__window.setWindowTitle(self.__windowApi.appName)
-                self.tabChanged.emit()
             except Exception as e:
                 self.__window.setWindowTitle(self.__windowApi.appName)
                 self.__windowApi.activeWindow.setLogMsg(f"Error when updating tabs: {e}")

@@ -7,6 +7,7 @@
         "OSX": "%HOME%/Library/Application Support/VT2"
     },
     "menu": "Ui/Main.vt-menu",
+    "themeFile": "",
     "logStdout": false,
     "saveState": true,
     "locale": "ru"
