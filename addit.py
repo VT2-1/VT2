@@ -4,8 +4,7 @@ from PyQt6.QtCore import QStringListModel, Qt, pyqtSlot
 from PyQt6.QtGui import QTextCursor
 from PyQt6.QtSql import QSqlDatabase, QSqlQuery
 
-from typing import List
-import sys, io
+import sys, io, uuid
 
 class Logger:
     def __init__(self, window):
@@ -366,6 +365,7 @@ class TabWidget (QtWidgets.QTabWidget):
         super(TabWidget, self).__init__(parent)
         self.setTabsClosable(True)
         self.MainWindow = MainWindow
+        self.api = MainWindow.api
         self.moveRange = None
         self.setObjectName("tabWidget")
         self.setMovable(True)
@@ -408,6 +408,39 @@ class TabWidget (QtWidgets.QTabWidget):
         tabRect = self.tabBar().tabRect(self.currentIndex())
         pos = self.tabBar().mapFromGlobal(QtGui.QCursor.pos())
         self.moveRange = pos.x() - tabRect.left(), tabRect.right() - pos.x()
+
+    def cAddTab(self):
+        self.tab = QtWidgets.QWidget()
+        self.tab.file = None
+        self.tab.canSave = None
+        self.tab.canEdit = None
+        self.tabBar().setTabSaved(self.tab, True)
+        self.tab.encoding = "utf-8"
+        self.tab.setObjectName(f"tab-{uuid.uuid4()}")
+
+        self.verticalLayout = QtWidgets.QVBoxLayout(self.tab)
+        self.verticalLayout.setObjectName("verticalLayout")
+
+        self.tab.frame = TagContainer(parent=self.tab, api=self.api)
+        self.tab.frame.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        self.tab.frame.setFrameShadow(QtWidgets.QFrame.Shadow.Raised)
+        self.tab.frame.setObjectName("tabFrame")
+        self.verticalLayout.addWidget(self.tab.frame)
+
+        self.tab.textEdit = TextEdit(self.MainWindow)
+        self.tab.textEdit.setReadOnly(False)
+        self.tab.textEdit.setObjectName("textEdit")
+
+        self.verticalLayout.addLayout(self.tab.textEdit.layout)
+
+        newView = self.api.View(self.api, self.api.activeWindow, qwclass=self.tab)
+        self.api.activeWindow.views.append(newView)
+
+        self.addTab(self.tab, "")
+        self.api.activeWindow.setTab(-1)
+        self.api.activeWindow.focus(newView)
+
+        self.api.activeWindow.signals.tabCreated.emit()
 
     def closeTab(self, tab):
         currentIndex = self.indexOf(tab)
@@ -699,7 +732,7 @@ class TagDB:
         if not query.exec():
             print(f"Ошибка удаления связи: {query.lastError().text()}")
 
-    def getTagsForFile(self, filename: str) -> List[str]:
+    def getTagsForFile(self, filename: str):
         query = QSqlQuery(self.db)
 
         # Получаем ID файла
@@ -735,7 +768,7 @@ class TagDB:
             tags.append(query.value(0))
         return tags
 
-    def getFilesForTag(self, tag: str) -> List[str]:
+    def getFilesForTag(self, tag: str):
         query = QSqlQuery(self.db)
 
         query.prepare("SELECT id FROM tags WHERE tag = ?")

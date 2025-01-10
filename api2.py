@@ -1,10 +1,7 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil
+import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil, builtins, traceback
 import urllib.request as requests
 import importlib.util
-import os
-import builtins
-import traceback
 
 from api import VtAPI
 
@@ -65,7 +62,8 @@ class PluginManager:
                 self.plugins.pop("Basic")
             else:
                 url = "https://github.com/cherry220-v/Basic"
-                self.__windowApi.activeWindow.setLogMsg(f"Plugin 'Basic' not found. Trying to install last version from {url}")
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Plugin 'Basic' not found. Trying to install last version from '{}'".format(url), self.__windowApi.WARNING))
+
                 try:
                     tempdirName = "vt-basic-install"
                     path = os.path.join(os.getenv("TEMP") or os.path.dirname(__file__), tempdirName)
@@ -88,10 +86,12 @@ class PluginManager:
                     self.loadPlugin("Basic")
                     self.plugins.pop("Basic")
                 except Exception as e:
-                    print(e)
-                    self.__windowApi.activeWindow.setLogMsg(f"Error when loading plugin from '{url}'", self.__windowApi.ERROR)
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when loading plugin from '{}'".format(url), self.__windowApi.ERROR))
+
                 finally:
                     shutil.rmtree(path)
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'Basic' plugin succesfully installed. Reboot the app", self.__windowApi.INFO))
+
             
             for pl in self.plugins:
                 self.loadPlugin(pl)
@@ -109,29 +109,32 @@ class PluginManager:
                 pyFile = self.mainFile
                 try:
                     with SafeImporter(BLOCKED):
-                        # sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
-                        # sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
+                        sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
+                        sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
+                        sys.modules['PyQt6.QtGui'].QGuiApplication = BlockedQApplication
                         sys.path.insert(0, fullPath)
                         self.module = self.importModule(pyFile, self.name + "Plugin")
                         if hasattr(self.module, "initAPI"):
                             self.module.initAPI(self.__windowApi)
-                        # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
+                        sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                 except Exception as e:
                     print(self.name, e)
-                    self.__windowApi.activeWindow.setLogMsg(f"Failed load plugin '{self.name}' commands: {e}", self.__windowApi.ERROR)
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load plugin '{}' commands: {}").format(self.name, e), self.__windowApi.ERROR)
+
                 finally:
-                    self.__windowApi.activeWindow.setLogMsg(f"Loaded plugin '{self.name}'", self.__windowApi.INFO)
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.INFO)
+
                     sys.path.pop(0)
             if self.menuFile:
                 self.loadMenu(self.menuFile, module=self.module, path=fullPath)
-                os.chdir(self.__windowApi.packagesDirs)
+            os.chdir(self.__windowApi.packagesDirs)
 
     def loadMenu(self, f, module=None, path=None):
         try:
             menuFile = json.load(open(f, "r+"))
             localeDir = os.path.join(path if path else "", "locale")
             if os.path.isdir(localeDir):
-                self.__window.translate(localeDir)
+                self.__window.addTranslation(localeDir)
             for menu in menuFile:
                 if menu == "menuBar" or menu == "mainMenu":
                     self.parseMenu(menuFile.get(menu), self.__window.menuBar(), pl=module, localemenu="MainMenu")
@@ -140,7 +143,8 @@ class PluginManager:
                 elif menu == "tabBarContextMenu":
                     self.parseMenu(menuFile.get(menu), self.__window.tabBarContextMenu, pl=module, localemenu="TabBarContextMenu")
         except Exception as e:
-            self.__windowApi.activeWindow.setLogMsg(f"Failed load menu from '{f}': {e}")
+            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load menu from '{}': {}").format(f, e))
+
 
     def initPlugin(self, path):
         config = json.load(open(path, "r+"))
@@ -150,7 +154,7 @@ class PluginManager:
         self.mainFile = config.get('main', '')
         self.menuFile = config.get('menu', '')
 
-    def parseMenu(self, data, parent, pl=None, localemenu="MainMenu"):
+    def parseMenu(self, data, parent, pl=None, localemenu="MainMenu", regc=True):
         if isinstance(data, dict):
             data = [data]
 
@@ -165,13 +169,13 @@ class PluginManager:
                     if 'children' in item:
                         self.parseMenu(item['children'], fmenu, pl)
                 else:
-                    menu = self.__menu_map.setdefault(menu_id, QtWidgets.QMenu(oldCoreApp.translate("MainMenu", item.get('caption', 'Unnamed')), self.__window))
+                    menu = self.__menu_map.setdefault(menu_id, QtWidgets.QMenu(self.__window.translate(localemenu, item.get('caption', 'Unnamed')), self.__window))
                     menu.setObjectName(item.get('id'))
                     parent.addMenu(menu)
                     if 'children' in item:
                         self.parseMenu(item['children'], menu, pl)
             else:
-                action = QtGui.QAction(oldCoreApp.translate(localemenu, item.get('caption', 'Unnamed')), self.__window)
+                action = QtGui.QAction(self.__window.translate(localemenu, item.get('caption', 'Unnamed')), self.__window)
                 if 'shortcut' in item:
                     if not item['shortcut'] in self.shortcuts:
                         action.setShortcut(QtGui.QKeySequence(item['shortcut']))
@@ -179,8 +183,7 @@ class PluginManager:
                         self.shortcuts.append(item['shortcut'])
                         self.__window.addAction(action)
                     else:
-                        self.__windowApi.activeWindow.setLogMsg(
-                            f"Shortcut '{item['shortcut']}' for function '{item['command']}' is already used.")
+                        self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Shortcut '{}' for function '{}' is already used.").format(item['shortcut'], item['command']))
 
                 if 'command' in item:
                     args = item.get('command').get("args")
@@ -192,7 +195,8 @@ class PluginManager:
                             data["checkedStatePath"] = item.get("checkedStatePath")
                         if 'checked' in item:
                             action.setChecked(item['checked'])
-                    self.registerCommand(data)
+                    if regc: self.registerCommand(data)
+                    else: action.triggered.connect(lambda: self.__windowApi.activeWindow.runCommand(item["command"]))
                 parent.addAction(action)
 
     def executeCommand(self, c, *args, **kwargs):
@@ -220,14 +224,15 @@ class PluginManager:
                 elif issubclass(cl, VtAPI.Plugin.ApplicationCommand):
                     c = cl(self.__windowApi)
                 out = c.run(*args or [], **kwargs or {})
-                self.__windowApi.activeWindow.setLogMsg(f"Executed command '{command}' with args '{args}', kwargs '{kwargs}'")
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Executed command '{}'").format(command))
                 if out:
-                    self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' returned '{out}'", self.__windowApi.ERROR)
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' returned '{}'").format(command, out), self.__windowApi.ERROR)
+
             except Exception as e:
                 traceback.print_exc()
-                self.__windowApi.activeWindow.setLogMsg(f"Found error in '{command}' - '{e}'.\nInfo: {c}", self.__windowApi.ERROR)
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Found error in '{}' - '{}'").format(command, e), self.__windowApi.ERROR)
         else:
-            self.__windowApi.activeWindow.setLogMsg(f"Command '{command}' not found")
+            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' not found").format(command))
 
     def registerClass(self, data):
         commandClass = data.get("command")
@@ -286,7 +291,8 @@ class PluginManager:
                     "checkedStatePath": chkdStatePath,
                 }
             except (ImportError, AttributeError, TypeError) as e:
-                self.__windowApi.activeWindow.setLogMsg(f"Error when registering '{commandN}' from '{pl}': {e}")
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when registering '{}' from '{}': {}").format(commandN, pl, e))
+
         else:
             if not inspect.isclass(commandN):
                 command_func = self.__window.getCommand(commandN)
@@ -302,7 +308,9 @@ class PluginManager:
                     "checkedStatePath": chkdStatePath,
                 }
             else:
-                self.__windowApi.activeWindow.setLogMsg(f"Command '{commandN}' not found")
+                print(commandN)
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' not found").format(commandN))
+
 
     def findAction(self, parent_menu, caption=None, command=None):
         for action in parent_menu.actions():
@@ -400,7 +408,12 @@ class VtAPI:
             return self.api.STATEFILE.get(self.id)
         
         def plugins(self):
-            return self.__mw.pl.plugins
+            if hasattr(self.__mw, "pl"):
+                if type(getattr(self.__mw, "pl")) == PluginManager:
+                    return self.__mw.pl.plugins
+
+        def translate(self, text, trtype="Console"):
+            return self.__mw.translate(trtype, text)
 
         def update(self):
             QtCore.QCoreApplication.processEvents()
@@ -415,22 +428,24 @@ class VtAPI:
                 self.setTitle(os.path.normpath(self.activeView.getFile() or 'Untitled'))
 
         def registerCommandClass(self, data):
-            self.__mw.pl.registerClass(data)
+            if hasattr(self.__mw, "pl"):
+                if type(getattr(self.__mw, "pl")) == PluginManager:
+                    self.__mw.pl.registerClass(data)
 
         def registerCommand(self, data):
-            self.__mw.pl.registerCommand(data)
+            if hasattr(self.__mw, "pl"):
+                if type(getattr(self.__mw, "pl")) == PluginManager:
+                    self.__mw.pl.registerCommand(data)
 
         def runCommand(self, command):
-            self.__mw.pl.executeCommand(command)
-        
-        def addToolBar(self, items, flags=[]):
-            toolBar = QtWidgets.QToolBar()
-            for action in items:
-                if issubclass(action, QtGui.QAction):
-                    self.__mw.addAction(action)
+            if hasattr(self.__mw, "pl"):
+                if type(getattr(self.__mw, "pl")) == PluginManager:
+                    self.__mw.pl.executeCommand(command)
 
         def getCommand(self, name):
-            return self.__mw.pl.regCommands.get(name)
+            if hasattr(self.__mw, "pl"):
+                if type(getattr(self.__mw, "pl")) == PluginManager:
+                    return self.__mw.pl.regCommands.get(name)
 
         def getTheme(self):
             return self.__mw.themeFile
@@ -498,7 +513,14 @@ class VtAPI:
             menuClass = self.__mw.pl.findMenu(self.__mw.menuBar(), menu)
             if menuClass:
                 self.__mw.pl.clearMenu(self.__mw.menuBar(), menu)
-                self.__mw.pl.parseMenu(data, menuClass)
+                self.__mw.pl.parseMenu(data, menuClass, regc=False)
+
+        def addToolBar(self, items, flags=[]):
+            toolBar = QtWidgets.QToolBar()
+            for action in items:
+                if isinstance(action, QtGui.QAction) or isinstance(action, VtAPI.Widgets.Action):
+                    toolBar.addAction(action)
+            self.__mw.addToolBar(toolBar)
 
         def addDockWidget(self, areas, dock: 'VtAPI.Widgets.DockWidget'):
             self.__mw.addDockWidget(areas, dock)
@@ -1071,7 +1093,7 @@ class VtAPI:
                     self.__window.setWindowTitle(self.__windowApi.appName)
             except Exception as e:
                 self.__window.setWindowTitle(self.__windowApi.appName)
-                self.__windowApi.activeWindow.setLogMsg(f"Error when updating tabs: {e}")
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when updating tabs: {}").format(e))
 
         def updateEncoding(self):
             e = self.__windowApi.activeWindow.activeView.getEncoding()
