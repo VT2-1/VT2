@@ -139,24 +139,26 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.treeView.doubleClicked.connect(self.api.activeWindow.signals.onDoubleClicked)
         self.tabWidget.currentChanged.connect(self.api.activeWindow.signals.tabChngd)
-        self.tabWidget.tabCloseRequested.connect(lambda: self.api.activeWindow.runCommand({"command": "CloseTabCommand"}))
+        self.tabWidget.tabCloseRequested.connect(lambda i: self.api.activeWindow.runCommand({"command": "CloseTabCommand", "kwargs": {"view": self.api.View(self.api, self.api.activeWindow, self.tabWidget.widget(i))}}))
 
         #####################################
+
+        # self.dirsLoaded = False
+
         if self.dirsLoaded:
             self.pl = PluginManager(self.api.pluginsDir, self)
             if self.api.Path(self.api.Path.joinPath(self.api.uiDir, "locale")).isDir(): self.addTranslation(self.api.Path.joinPath(self.api.uiDir, "locale"))
             if self.menuFile and self.api.Path(self.menuFile).isFile(): self.pl.loadMenu(self.menuFile)
             self.pl.loadPlugins()
-
-            otherPlugin = api.Plugin(api, "PythonSyntax", r"C:\Users\Trash\Documents\VarTexter2\Plugins\PythonSyntax")
-            [otherPlugin.load(w) for w in api.windows]
         self.api.activeWindow.signals.windowStarted.emit()
 
         if restoreState: self.api.activeWindow.signals.windowStateRestoring.emit()
-
-        self.api.activeWindow.openFiles([sys.argv[1]] if len(sys.argv) > 1 else [])
+        self.processArgv()
         if self.api.activeWindow.activeView: self.api.activeWindow.activeView.update()
         self.show()
+
+    def processArgv(self):
+        self.api.activeWindow.openFiles([arg for arg in sys.argv[1:] if not arg.startswith("--log")])
 
     def argvParse(self):
         return sys.argv

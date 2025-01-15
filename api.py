@@ -79,6 +79,7 @@ api.addWindow(w)
         def activeView(self) -> 'VtAPI.View': """Получает активную вкладку"""
         def views(self) -> List['VtAPI.View']: """Получает список вкладок как View"""
         def state(self) -> dict: """Получает состояние окна"""
+        def plugins(self) -> dict: """Получает загруженные плагины окна"""
         # def signals(self) -> 'VtAPI.Signals': """Получает класс Signals со всеми сигналами окна (Изоляция в отдельный класс для красоты и читаемости кода)"""
         def setTitle(self, s: str) -> None: """Устанавливает заголовок окна"""
         def focus(self, view: 'VtAPI.View') -> None: """Устанавливает вкладку по View"""

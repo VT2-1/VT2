@@ -1,5 +1,6 @@
 from PyQt6 import QtWidgets, QtCore, QtGui
-import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil, builtins, traceback
+from typing import *
+import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil, builtins, traceback, time
 import urllib.request as requests
 import importlib.util
 
@@ -10,6 +11,8 @@ BLOCKED = [
 ]
 
 oldCoreApp = QtCore.QCoreApplication
+oldQApp = QtWidgets.QApplication
+oldGuiApp = QtGui.QGuiApplication
 
 class SafeImporter:
     def __init__(self, disallowed_imports):
@@ -116,6 +119,8 @@ class PluginManager:
                         self.module = self.importModule(pyFile, self.name + "Plugin")
                         if hasattr(self.module, "initAPI"):
                             self.module.initAPI(self.__windowApi)
+                        sys.modules['PyQt6.QtWidgets'].QApplication = oldQApp
+                        sys.modules['PyQt6.QtGui'].QGuiApplication = oldGuiApp
                         sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                 except Exception as e:
                     print(self.name, e)
@@ -178,10 +183,13 @@ class PluginManager:
                 action = QtGui.QAction(self.__window.translate(localemenu, item.get('caption', 'Unnamed')), self.__window)
                 if 'shortcut' in item:
                     if not item['shortcut'] in self.shortcuts:
-                        action.setShortcut(QtGui.QKeySequence(item['shortcut']))
-                        action.setStatusTip(item['shortcut'])
-                        self.shortcuts.append(item['shortcut'])
-                        self.__window.addAction(action)
+                        if type(item["shortcut"]) != list:
+                            item["shortcut"] = [item['shortcut']]
+                        for key in item["shortcut"]:
+                            action.setShortcut(QtGui.QKeySequence(key))
+                            # action.setStatusTip(item['shortcut'])
+                            self.shortcuts.append(key)
+                            self.__window.addAction(action)
                     else:
                         self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Shortcut '{}' for function '{}' is already used.").format(item['shortcut'], item['command']))
 
@@ -378,7 +386,15 @@ class VtAPI:
         self.ERROR = "red"
 
     class Window:
-        def __init__(self, api, views=None, activeView=None, id=None, qmwclass: QtWidgets.QMainWindow | None = None):
+        """Окно и управление им"""
+        def __init__(self, api: "VtAPI", id: Optional[str] = None, views: Optional[List['VtAPI.View']] = None, activeView: Optional['VtAPI.View'] = None, qmwclass: Optional[QtWidgets.QMainWindow] = None) -> None:
+            """Инициализация для использования
+```
+w = Window(api, wId, [View(api, w)])
+w.focus(w.views[0])
+api.addWindow(w)
+```
+            """
             self.api: VtAPI = api
             self.__mw: QtWidgets.QMainWindow = qmwclass
             self.signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
@@ -388,28 +404,34 @@ class VtAPI:
             self.id = id
 
         def newFile(self) -> 'VtAPI.View':
+            """Создаёт новую вкладку"""
             self.__mw.addTab()
             return self.activeView
         
-        def openFiles(self, files):
-            """Use command with name 'OpenFileCommand'"""
+        def openFiles(self, files: List[str]) -> None:
+            """Открывает файл(ы) (Запускает стандартную привязанную команду OpenFileCommand)"""
             self.runCommand({"command": "OpenFileCommand", "args": [files]})
         
-        def saveFile(self, view=None, dlg=False):
+        def saveFile(self, view: Optional['VtAPI.View'] = None, dlg: bool = False) -> None:
+            """Сохраняет текст вкладки (Запускает стандартную привязанную команду SaveFileCommand)"""
             self.runCommand({"command": "SaveFileCommand", "kwargs": {"dlg": dlg}})
         
         def activeView(self) -> 'VtAPI.View':
+            """Получает активную вкладку"""
             return self.activeView
 
-        def views(self):
+        def views(self) -> List['VtAPI.View']:
+            """Получает список вкладок"""
             return self.views
         
-        def state(self):
+        def state(self) -> dict:
+            """Получает состояние окна"""
             return self.api.STATEFILE.get(self.id)
         
-        def plugins(self):
+        def plugins(self) -> dict:
+            """Получает загруженные плагины окна"""
             if hasattr(self.__mw, "pl"):
-                if type(getattr(self.__mw, "pl")) == PluginManager:
+                if isinstance(self.__mw.pl, PluginManager):
                     return self.__mw.pl.plugins
 
         def translate(self, text, trtype="Console"):
@@ -417,6 +439,9 @@ class VtAPI:
 
         def update(self):
             QtCore.QCoreApplication.processEvents()
+
+        def setUpdatesEnabled(self, b: bool):
+            self.__mw.setUpdatesEnabled(b)
 
         def setTitle(self, s):
             self.__mw.setWindowTitle(f"{s} - {self.api.appName}")
@@ -429,22 +454,22 @@ class VtAPI:
 
         def registerCommandClass(self, data):
             if hasattr(self.__mw, "pl"):
-                if type(getattr(self.__mw, "pl")) == PluginManager:
+                if isinstance(self.__mw.pl, PluginManager):
                     self.__mw.pl.registerClass(data)
 
         def registerCommand(self, data):
             if hasattr(self.__mw, "pl"):
-                if type(getattr(self.__mw, "pl")) == PluginManager:
+                if isinstance(self.__mw.pl, PluginManager):
                     self.__mw.pl.registerCommand(data)
 
         def runCommand(self, command):
             if hasattr(self.__mw, "pl"):
-                if type(getattr(self.__mw, "pl")) == PluginManager:
+                if isinstance(self.__mw.pl, PluginManager):
                     self.__mw.pl.executeCommand(command)
 
         def getCommand(self, name):
             if hasattr(self.__mw, "pl"):
-                if type(getattr(self.__mw, "pl")) == PluginManager:
+                if isinstance(self.__mw.pl, PluginManager):
                     return self.__mw.pl.regCommands.get(name)
 
         def getTheme(self):
@@ -470,7 +495,7 @@ class VtAPI:
 
         def setLogMsg(self, msg, t=""):
             msg = f"""<i style="color: {t};">{msg}</i>"""
-            self.__mw.logger.log += f"<br>{msg}"
+            self.__mw.logger.log += f"<br>{time.strftime("[%H:%M:%S %d %b]", time.localtime())}: {msg}"
 
         def currentTreeIndex(self):
             return self.__mw.treeView.currentIndex()
@@ -917,12 +942,24 @@ class VtAPI:
             return self.path
     
         def read(self, chunk=1024):
+            if self.encoding == "binary":
+                self.mode = "rb"
+            else:
+                self.mode = "r"
             if self.exists() and not os.path.isdir(self.path):
                 lines = []
-                with open(self.path, "r+", encoding=self.encoding, errors="ignore") as file:
-                    while chunk_data := file.read(chunk):
+                with open(self.path, self.mode, encoding=None if self.mode == "rb" else self.encoding, errors="ignore") as file:
+                    while chunk_data := file.read(int(chunk)):
                         lines.append(chunk_data)
                 return lines
+
+        def write(self, content, chunk=1024):
+            chunk = int(chunk)
+            total_length = len(content)
+            with open(self.path, 'w', encoding=self.encoding) as file:
+                for i in range(0, total_length, chunk):
+                    chunkk = content[i:i + chunk]
+                    file.write(chunkk)
 
         def exists(self): return os.path.isfile(self.path)
 
@@ -1097,7 +1134,7 @@ class VtAPI:
 
         def updateEncoding(self):
             e = self.__windowApi.activeWindow.activeView.getEncoding()
-            self.__window.encodingLabel.setText(e)
+            self.__window.encodingLabel.setText(e.upper())
 
         def onDoubleClicked(self, index):
             self.treeWidgetDoubleClicked.emit(index)

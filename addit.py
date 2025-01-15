@@ -14,6 +14,10 @@ class Logger:
         self._stdout_backup = sys.stdout
         self._log_stream = io.StringIO()
         sys.stdout = self
+        self._file = None
+
+    def setFile(self, file):
+        self._file = file
 
     @property
     def log(self):
@@ -22,12 +26,14 @@ class Logger:
     @log.setter
     def log(self, value):
         self._log = value
+        if self._file: self._file.write("\n"+value)
         self.__window.api.activeWindow.signals.logWrited.emit(value)
 
     def write(self, message):
         if message:
             if self.__window.logStdout:
                 self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
+                if self._file: self._file.write("\n"+message)
                 self.__window.api.activeWindow.signals.logWrited.emit(message)
             self._stdout_backup.write(message)
 
