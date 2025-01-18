@@ -1,4 +1,4 @@
-from PyQt6 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore, QtGui
 from typing import *
 import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil, builtins, traceback, time
 import urllib.request as requests
@@ -112,19 +112,20 @@ class PluginManager:
                 pyFile = self.mainFile
                 try:
                     with SafeImporter(BLOCKED):
-                        sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
-                        sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
-                        sys.modules['PyQt6.QtGui'].QGuiApplication = BlockedQApplication
+                        # sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
+                        # sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
+                        # sys.modules['PyQt6.QtGui'].QGuiApplication = BlockedQApplication
                         sys.path.insert(0, fullPath)
                         self.module = self.importModule(pyFile, self.name + "Plugin")
                         if hasattr(self.module, "initAPI"):
                             self.module.initAPI(self.__windowApi)
-                        sys.modules['PyQt6.QtWidgets'].QApplication = oldQApp
-                        sys.modules['PyQt6.QtGui'].QGuiApplication = oldGuiApp
-                        sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
+                        # sys.modules['PyQt6.QtWidgets'].QApplication = oldQApp
+                        # sys.modules['PyQt6.QtGui'].QGuiApplication = oldGuiApp
+                        # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                 except Exception as e:
                     print(self.name, e)
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load plugin '{}' commands: {}").format(self.name, e), self.__windowApi.ERROR)
+                    self.module = None
 
                 finally:
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.INFO)
@@ -185,11 +186,10 @@ class PluginManager:
                     if not item['shortcut'] in self.shortcuts:
                         if type(item["shortcut"]) != list:
                             item["shortcut"] = [item['shortcut']]
-                        for key in item["shortcut"]:
-                            action.setShortcut(QtGui.QKeySequence(key))
+                        action.setShortcuts(item["shortcut"])
                             # action.setStatusTip(item['shortcut'])
-                            self.shortcuts.append(key)
-                            self.__window.addAction(action)
+                        self.shortcuts.append(key for key in item["shortcut"])
+                        self.__window.addAction(action)
                     else:
                         self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Shortcut '{}' for function '{}' is already used.").format(item['shortcut'], item['command']))
 
@@ -400,7 +400,7 @@ api.addWindow(w)
             self.signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
             self.views = views or []
             self.activeView: VtAPI.View | None = activeView
-            self.model = QtGui.QFileSystemModel()
+            self.model = QtWidgets.QFileSystemModel()
             self.id = id
 
         def newFile(self) -> 'VtAPI.View':
@@ -507,7 +507,7 @@ api.addWindow(w)
             return self.model.filePath(i)
 
         def setTreeWidgetDir(self, dir):
-            self.model = QtGui.QFileSystemModel()
+            self.model = QtWidgets.QFileSystemModel()
             self.model.setRootPath(dir)
             self.__mw.treeView.setModel(self.model)
             self.__mw.treeView.setRootIndex(self.model.index(dir))
@@ -615,6 +615,10 @@ api.addWindow(w)
 
         def window(self):
             return self.__window
+
+        def focus(self):
+            self.window.focus(self)
+            self.__tab.textEdit.setFocus()
 
         def getTitle(self):
             return self.__tabWidget.tabText(self.__tabWidget.indexOf(self.__tab))
@@ -995,55 +999,42 @@ api.addWindow(w)
             window._Window__mw.pl.plugins[self.name] = self.path
             window._Window__mw.pl.loadPlugin(self.name)
 
-        class TextCommand:
-            def __init__(self, api, view):
-                self.api: VtAPI = api
-                self.view: VtAPI.View = view
+        class ApplicationCommand(QtCore.QObject):
+            def __init__(self, api: VtAPI):
+                super().__init__()
+                self.api = api
 
-            def run(self, edit):
-                ...
-            
-            def is_enabled(self):
-                pass
-            
-            def is_visible(self):
-                pass
-            
-            def description(self):
-                pass
+            def run(self): ...
 
-        class WindowCommand:
-            def __init__(self, api, window):
-                self.api: VtAPI = api
-                self.window: VtAPI.Window = window
+            def description(self): ...
 
-            def run(self):
-                ...
-            
-            def is_enabled(self):
-                pass
-            
-            def is_visible(self):
-                pass
-            
-            def description(self):
-                pass
+        class WindowCommand(ApplicationCommand):
+            def __init__(self, api: VtAPI, window: VtAPI.Window):
+                super().__init__(api)
+                self.window = window
+                self.__signals = {}
 
-        class ApplicationCommand:
-            def __init__(self, api):
-                self.api: VtAPI = api
+            def run(self): ...
 
-            def run(self):
-                ...
+            def description(self): ...
+
+            def __del__(self):
+                for signal in self.__signals:
+                    self.window.signals.findSignal(signal).disconnect()
+                    self.window.signals.deleteSignal(signal)
             
-            def is_enabled(self):
-                pass
-            
-            def is_visible(self):
-                pass
-            
-            def description(self):
-                pass
+            def addSignal(self, name, signal):
+                self.__signals[name] = signal
+                self.window.signals.addSignal(name, signal)
+
+        class TextCommand(WindowCommand):
+            def __init__(self, api: VtAPI, view: VtAPI.View):
+                super().__init__(api, view.window())
+                self.view = view
+
+            def run(self, edit): ...
+
+            def description(self): ...
 
     class Point:
         def __init__(self, x=0, y=0):
@@ -1073,44 +1064,51 @@ api.addWindow(w)
             return False
 
     class Signals(QtCore.QObject):
-        tabClosed = QtCore.pyqtSignal(object)
-        tabCreated = QtCore.pyqtSignal()
-        tabChanged = QtCore.pyqtSignal(object, object)
+        tabClosed = QtCore.Signal(object)
+        tabCreated = QtCore.Signal()
+        tabChanged = QtCore.Signal(object, object)
 
-        textChanged = QtCore.pyqtSignal()
+        textChanged = QtCore.Signal()
 
-        windowClosed = QtCore.pyqtSignal()
-        windowStarted = QtCore.pyqtSignal()
-        windowStateRestoring = QtCore.pyqtSignal()
-        windowRunningStateInited = QtCore.pyqtSignal()
-        windowStateSaving = QtCore.pyqtSignal()
+        windowClosed = QtCore.Signal()
+        windowStarted = QtCore.Signal()
+        windowStateRestoring = QtCore.Signal()
+        windowRunningStateInited = QtCore.Signal()
+        windowStateSaving = QtCore.Signal()
 
-        logWrited = QtCore.pyqtSignal(str)
+        logWrited = QtCore.Signal(str)
 
-        treeWidgetClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
-        treeWidgetDoubleClicked = QtCore.pyqtSignal(QtCore.QModelIndex)
-        treeWidgetActivated = QtCore.pyqtSignal()
+        treeWidgetClicked = QtCore.Signal(QtCore.QModelIndex)
+        treeWidgetDoubleClicked = QtCore.Signal(QtCore.QModelIndex)
+        treeWidgetActivated = QtCore.Signal()
 
-        fileOpened = QtCore.pyqtSignal(object)
-        fileSaved = QtCore.pyqtSignal(object)
-        fileTagInited = QtCore.pyqtSignal(object)
+        fileOpened = QtCore.Signal(object)
+        fileSaved = QtCore.Signal(object)
+        fileTagInited = QtCore.Signal(object)
 
-        fileTagAdded = QtCore.pyqtSignal(object, str)
-        fileTagRemoved = QtCore.pyqtSignal(object, str)
+        fileTagAdded = QtCore.Signal(object, str)
+        fileTagRemoved = QtCore.Signal(object, str)
 
         def __init__(self, w):
             super().__init__(w)
             self.__window: QtWidgets.QMainWindow = w
             self.__windowApi: VtAPI = self.__window.api
+            self._signals = {}
 
-        def addSignal(self, signalName: str, signalArgs: list):
-            signalType = [arg for arg in signalArgs]
-            signal = QtCore.pyqtSignal(*signalType)
-            
-            setattr(self, signalName, signal)
+        def __getattr__(self, name):
+            if name in self._signals:
+                return self._signals[name]
+            raise AttributeError(f"'Signals' object has no attribute '{name}'")
+
+        def addSignal(self, signalName: str, signal):
+            if not signalName in self._signals: self._signals[signalName] = signal
+            else: raise self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Signals already has signal '{}'".format(signalName)))
+
+        def deleteSignal(self, signalName: str):
+            if signalName in self._signals: self._signals.pop(signalName)
 
         def findSignal(self, signalName: str):
-            return getattr(self, signalName)
+            return self._signals.get(signalName)
 
         def tabChngd(self, index):
             widget = self.__window.tabWidget.currentWidget()
@@ -1304,3 +1302,74 @@ api.addWindow(w)
 
     def packagesPath(self):
         return self.packagesDir
+
+import re
+
+class CommandParser:
+    def __init__(self):
+        self.signal_activate_pattern = r'^signal:activate (?P<signal_name>\w+)\[(?P<data>.+?)\]$'
+        self.signal_exists_pattern = r'^signal:exists (?P<signal_name>\w+)$'
+        
+        self.command_exists_pattern = r'^command:exists (?P<command_name>\w+)$'
+        self.command_run_pattern = r'^command:run (?P<dict_data>\{.*\})$'
+        
+        self.api_version_pattern = r'^api:version$'
+        self.api_command_pattern1 = r'^api:command (?P<command_name>\w+)$'
+        self.api_command_pattern2 = r'^api:command (?P<command_name>\w+)\[(?P<data>.+?)\]$'
+        self.api_command_pattern = self.api_command_pattern1 or self.api_command_pattern2
+
+    def parse(self, input_line):
+        patterns = [
+            (self.signal_activate_pattern, self.handle_signal_activate),
+            (self.signal_exists_pattern, self.handle_signal_exists),
+            (self.command_exists_pattern, self.handle_command_exists),
+            (self.command_run_pattern, self.handle_command_run),
+            (self.api_version_pattern, self.handle_api_version),
+            (self.api_command_pattern, self.handle_api_command),
+        ]
+        
+        for pattern, handler in patterns:
+            match = re.match(pattern, input_line)
+            if match:
+                handler(match)
+                return
+        
+        print("Invalid command.")
+
+    def handle_signal_activate(self, match):
+        signal_name = match.group('signal_name')
+        data = match.group('data')
+        print(f"Activating signal '{signal_name}' with data: {data}")
+
+    def handle_signal_exists(self, match):
+        signal_name = match.group('signal_name')
+        print(f"Checking if signal '{signal_name}' exists")
+
+    def handle_command_exists(self, match):
+        command_name = match.group('command_name')
+        print(f"Checking if command '{command_name}' exists")
+
+    def handle_command_run(self, match):
+        dict_data = match.group('dict_data')
+        print(f"Running command with data: {dict_data}")
+
+    def handle_api_version(self, match):
+        print("Fetching API version")
+
+    def handle_api_command(self, match):
+        command_name = match.group('command_name')
+        try:
+            data = match.group('data')
+        except: data = None
+        print(f"Running API command {command_name} with data: {data}")
+        if hasattr(self.api, command_name):
+            self.api.command_name()
+
+# parser = CommandParser()
+
+# parser.parse("signal:activate signalName[data]")
+# parser.parse("signal:exists signalName")
+# parser.parse("command:exists commandName")
+# parser.parse("command:run {\"key\": \"value\"}")
+# parser.parse("api:version")
+# parser.parse("api:command commandName")

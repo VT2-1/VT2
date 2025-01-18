@@ -1,8 +1,8 @@
-from PyQt6 import QtCore, QtGui, QtWidgets
-from PyQt6.QtWidgets import QCompleter
-from PyQt6.QtCore import QStringListModel, Qt, pyqtSlot
-from PyQt6.QtGui import QTextCursor
-from PyQt6.QtSql import QSqlDatabase, QSqlQuery
+from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtWidgets import QCompleter
+from PySide6.QtCore import QStringListModel, Qt, Slot
+from PySide6.QtGui import QTextCursor
+from PySide6.QtSql import QSqlDatabase, QSqlQuery
 
 import sys, io, uuid
 
@@ -67,7 +67,7 @@ class MiniMap(QtWidgets.QTextEdit):
         self.update_minimap()
         self.viewport().update()
 
-    @pyqtSlot()
+    @Slot()
     def syncScroll(self):
         maxValue = self.textEdit.verticalScrollBar().maximum()
         if maxValue != 0:
@@ -83,7 +83,7 @@ class MiniMap(QtWidgets.QTextEdit):
         self.setTextCursor(c)
         self.viewport().update()
 
-    @pyqtSlot()
+    @Slot()
     def update_minimap(self):
         self.setPlainText(self.textEdit.toPlainText())
         self.syncScroll()
@@ -221,7 +221,7 @@ class StandartHighlighter(QtGui.QSyntaxHighlighter):
             self.rehighlight()
 
 class StandartCompleter(QCompleter):
-    insertText = QtCore.pyqtSignal(str)
+    insertText = QtCore.Signal(str)
 
     def __init__(self, parent: QtWidgets.QTextEdit):
         QCompleter.__init__(self, parent)
@@ -802,3 +802,11 @@ class TagDB:
         while query.next():
             files.append(query.value(0))
         return files
+
+class TreeWidget(QtWidgets.QTreeView):
+    def __init__(self, w):
+        self.w = w
+        self.w.w.signals.treeWidgetDoubleClicked.connect()
+    def mouseDoubleClickEvent(self, e):
+
+        return super().mouseDoubleClickEvent(e)

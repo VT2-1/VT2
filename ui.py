@@ -1,4 +1,4 @@
-from PyQt6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 import sys, uuid
 
 from addit import *
@@ -89,7 +89,7 @@ class Ui_MainWindow(object):
                 raise FileNotFoundError("File doesn't exists")
         except Exception as e:
             self.settData = {}
-            self.api.activeWindow.setLogMsg(self.tr("Error reading settings. Check /ui/Main.settings file", self.api.ERROR))
+            self.api.activeWindow.setLogMsg(self.translate("Error reading settings. Check /ui/Main.settings file", self.api.ERROR))
         self.api.packagesDirs = self.settData.get("packageDirs") or "./Packages/"
         if type(self.api.packagesDirs) == dict and self.api.packagesDirs:
             self.api.packagesDirs = self.api.replacePaths(self.api.packagesDirs.get(self.api.platform()))
@@ -117,6 +117,24 @@ class Ui_MainWindow(object):
 class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
     def run(self):
         MainWindow(self.api)
+
+class LogConsoleCommand(VtAPI.Plugin.TextCommand):
+    testSignal = QtCore.Signal(str)
+    def __init__(self, api: VtAPI, view):
+        self.api: VtAPI = api
+        self.view: VtAPI.View = view
+        super().__init__(api, view)
+        self.addSignal("testSignal", self.testSignal)
+        self.testSignal.connect(self.click)
+
+    def click(self, s):
+        print(s)
+
+    def run(self, restoring=False, state=None):
+        try:
+            self.window.signals.testSignal.emit("Hello")
+        except Exception as e:
+            print(f"Error: {e}")
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
@@ -150,6 +168,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             if self.api.Path(self.api.Path.joinPath(self.api.uiDir, "locale")).isDir(): self.addTranslation(self.api.Path.joinPath(self.api.uiDir, "locale"))
             if self.menuFile and self.api.Path(self.menuFile).isFile(): self.pl.loadMenu(self.menuFile)
             self.pl.loadPlugins()
+            self.pl.regCommands.get("LogConsoleCommand").get("action").deleteLater()
+            self.api.activeWindow.registerCommandClass({"command": LogConsoleCommand, "shortcut": "shift+esc"})
         self.api.activeWindow.signals.windowStarted.emit()
 
         if restoreState: self.api.activeWindow.signals.windowStateRestoring.emit()
@@ -215,4 +235,7 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(e)

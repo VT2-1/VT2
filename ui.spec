@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_data_files
 
-qt6_data = collect_data_files('PyQt6', subdir=None, include_py_files=True)
+qt6_data = collect_data_files('PySide6', subdir=None, include_py_files=True)
 
 a = Analysis(
     ['ui.py'],
@@ -9,9 +9,9 @@ a = Analysis(
     binaries=[],
     datas=qt6_data,
     hiddenimports=[
-        'PyQt6.QtCore',
-        'PyQt6.QtGui',
-        'PyQt6.QtWidgets',
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+        'PySide6.QtWidgets',
         'importlib',
         'importlib.resources',
         'datetime',
