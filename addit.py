@@ -520,7 +520,6 @@ class Tag(QtWidgets.QWidget):
     def closeTag(self):
         self.onClose(self.text)
 
-
 class TagContainer(QtWidgets.QFrame):
     def __init__(self, parent=None, api=None):
         super().__init__(parent)
@@ -804,9 +803,78 @@ class TagDB:
         return files
 
 class TreeWidget(QtWidgets.QTreeView):
-    def __init__(self, w):
+    def __init__(self, parent, w):
+        super().__init__(parent)
         self.w = w
-        self.w.w.signals.treeWidgetDoubleClicked.connect()
-    def mouseDoubleClickEvent(self, e):
+        self.doubleClicked.connect(self.doubleClick)
+        self.clicked.connect(self.click)
+        self.activated.connect(self.Activated)
+    def doubleClick(self, index):
+        self.w.w.signals.treeWidgetDoubleClicked.emit(index)
+    def click(self, index):
+        self.w.w.signals.treeWidgetClicked.emit(index)
+    def Activated(self):
+        self.w.w.signals.treeWidgetActivated.emit()
 
-        return super().mouseDoubleClickEvent(e)
+class StatusBar(QtWidgets.QStatusBar):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setContentsMargins(0, 0, 0, 0)
+        self.animList = []  # Список символов для анимации
+        self.currentElement = 0  # Текущий индекс анимации
+        self.fontt = QtGui.QFont("Arial")
+        self.fontt.setPointSize(10)
+        self.setFont(self.fontt)
+
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self.updateAnimation)
+
+        self.animLabel = QtWidgets.QLabel("", self)
+        self.animLabel.setObjectName("animLabel")
+
+        self.msgLabel = QtWidgets.QLabel("", self)
+        self.msgLabel.setObjectName("msgLabel")
+
+        self.encodingLabel = QtWidgets.QLabel("UTF-8", self)
+        self.encodingLabel.setObjectName("encodingLabel")
+
+        self.addWidget(self.animLabel)
+        self.addWidget(self.msgLabel)
+        self.addPermanentWidget(self.encodingLabel)
+
+        self.msgTimer = QtCore.QTimer(self)
+        self.msgTimer.timeout.connect(self.clearStatusMessage)
+
+    def showStatusMessage(self, text, timeout=0):
+        self.msgLabel.setText(text)
+        if timeout > 0:
+            self.msgTimer.start(timeout)
+
+    def clearStatusMessage(self):
+        self.msgLabel.setText("")
+        self.msgTimer.stop()
+
+    def currentStatusMessage(self):
+        return self.msgLabel.text()
+
+    def setEncoding(self, text):
+        self.encodingLabel.setText(text)
+
+    def getEncoding(self):
+        return self.encodingLabel.text()
+
+    def startAnimation(self, interval=500):
+        if self.animList:
+            self.timer.start(interval)
+
+    def stopAnimation(self):
+        self.timer.stop()
+        self.animLabel.clear()
+
+    def setAnimationList(self, lst):
+        self.animList = lst
+
+    def updateAnimation(self):
+        if self.animList:
+            self.currentElement = (self.currentElement + 1) % len(self.animList)
+            self.animLabel.setText(self.animList[self.currentElement])

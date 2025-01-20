@@ -71,6 +71,7 @@ api.addWindow(w)
         def activeView(self) -> 'VtAPI.View': """Получает активную вкладку"""
         def views(self) -> List['VtAPI.View']: """Получает список вкладок как View"""
         def state(self) -> dict: """Получает состояние окна"""
+        def id(self) -> str: "Получает id окна"
         @property
         def signals(self) -> 'VtAPI.Signals': """Получает класс Signals со всеми сигналами окна (Изоляция в отдельный класс для красоты и читаемости кода)"""
         def setTitle(self, s: str) -> None: """Устанавливает заголовок окна"""
@@ -296,6 +297,16 @@ api.addWindow(w)
         def __init__(self, name: Optional[str] = None, path: Optional[str] = None): ...
         def use(self, window: "VtAPI.Window" = None) -> None: """Устанавливает тему для окна"""
         def exists(self) -> bool: """Проверяет существует ли тема"""
+    class Path:
+        """Путь (замена модуля os)"""
+        def __init__(self, path: str = None, encoding="utf-8"): "Создает путь"
+        def exists(self): "Проверяет наличие файла (os.path.isfile)"
+        def isFile(self): "Проверяет наличие файла v2 (os.path.isfile)"
+        def isDir(self): "Проверяет являетя ли путь папкой (os.path.isfile)"
+        def joinPath(*args): "Строит путь по аргументам (os.path.join)"
+        def dirName(self): "Получает название папки по пути (os.path.dirname)"
+        def chdir(path): "Сменяет папку (os.chdir)"
+        def create(self): "Создает папки по пути (os.makedirs)"
     class Plugin:
         """Все виды команд которые можно использовать"""
         class TextCommand:
@@ -330,14 +341,6 @@ api.addWindow(w)
         def __eq__(self, other: 'VtAPI.Point') -> bool: ...
     class Signals(QObject):
         """Класс с сигналами для окна"""
-        tabClosed = pyqtSignal(object)
-        tabCreated = pyqtSignal()
-        tabChanged = pyqtSignal()
-        textChanged = pyqtSignal()
-        windowClosed = pyqtSignal()
-        windowStarted = pyqtSignal()
-        fileOpened = pyqtSignal(object)
-        fileSaved = pyqtSignal(object)
         def __init__(self, w: QMainWindow) -> None: ...
         def addSignal(self, signalName: str, signalArgs: list) -> None: """Команда не работает и крашит приложение, т к PyQt6 не даёт привязывать pyqtSignal динамически"""
         def findSignal(self, signalName: str) -> pyqtSignal: """Ищет сигнал по названию"""

@@ -32,7 +32,8 @@ a = Analysis(
         'difflib',
         'pydoc',
         'filecmp',
-        'traceback'
+        'traceback',
+        'heapq'
         ],
     hookspath=[],
     hooksconfig={},

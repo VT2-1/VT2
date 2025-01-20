@@ -26,7 +26,7 @@ class Ui_MainWindow(object):
         self.horizontalLayout = QtWidgets.QHBoxLayout(self.centralwidget)
         self.horizontalLayout.setObjectName("horizontalLayout")
 
-        self.treeView = QtWidgets.QTreeView(parent=self.centralwidget)
+        self.treeView = TreeWidget(parent=self.centralwidget, w=self.MainWindow)
         self.treeView.setMinimumWidth(150)
         self.treeView.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
         self.treeView.setMaximumWidth(300)
@@ -46,15 +46,12 @@ class Ui_MainWindow(object):
 
         self.MainWindow.setMenuBar(self.menubar)
 
-        self.encodingLabel = QtWidgets.QLabel("UTF-8")
-        self.encodingLabel.setObjectName("encodingLabel")
-        self.statusbar = QtWidgets.QStatusBar(parent=self.MainWindow)
-        self.statusbar.setObjectName("statusbar")
-        self.statusbar.addPermanentWidget(self.encodingLabel)
+        self.statusbar = StatusBar(parent=self.MainWindow)
+        self.statusbar.setAnimationList(["▁", "▂", "▅", "▆", "▇"])
         self.MainWindow.setStatusBar(self.statusbar)
         self.tagBase = TagDB(self.api.Path.joinPath(self.api.packagesDirs, ".ft"))
         self.logger = self.MainWindow.logger
-        self.MainWindow.logStdout = False
+        self.MainWindow.logStdout = self.settData.get("logStdout")
 
         QtCore.QMetaObject.connectSlotsByName(self.MainWindow)
 
@@ -118,24 +115,6 @@ class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
     def run(self):
         MainWindow(self.api)
 
-class LogConsoleCommand(VtAPI.Plugin.TextCommand):
-    testSignal = QtCore.Signal(str)
-    def __init__(self, api: VtAPI, view):
-        self.api: VtAPI = api
-        self.view: VtAPI.View = view
-        super().__init__(api, view)
-        self.addSignal("testSignal", self.testSignal)
-        self.testSignal.connect(self.click)
-
-    def click(self, s):
-        print(s)
-
-    def run(self, restoring=False, state=None):
-        try:
-            self.window.signals.testSignal.emit("Hello")
-        except Exception as e:
-            print(f"Error: {e}")
-
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
         super().__init__()
@@ -155,27 +134,26 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.installEventFilter(self)
         # Commands/signals register area
 
-        self.treeView.doubleClicked.connect(self.api.activeWindow.signals.onDoubleClicked)
         self.tabWidget.currentChanged.connect(self.api.activeWindow.signals.tabChngd)
         self.tabWidget.tabCloseRequested.connect(lambda i: self.api.activeWindow.runCommand({"command": "CloseTabCommand", "kwargs": {"view": self.api.View(self.api, self.api.activeWindow, self.tabWidget.widget(i))}}))
 
         #####################################
 
-        # self.dirsLoaded = False
+        # self.dirsLoaded = False # Отладка (проверка независимости приложения от PluginManager и на правильную загрузку настроек)
 
         if self.dirsLoaded:
             self.pl = PluginManager(self.api.pluginsDir, self)
             if self.api.Path(self.api.Path.joinPath(self.api.uiDir, "locale")).isDir(): self.addTranslation(self.api.Path.joinPath(self.api.uiDir, "locale"))
             if self.menuFile and self.api.Path(self.menuFile).isFile(): self.pl.loadMenu(self.menuFile)
             self.pl.loadPlugins()
-            self.pl.regCommands.get("LogConsoleCommand").get("action").deleteLater()
-            self.api.activeWindow.registerCommandClass({"command": LogConsoleCommand, "shortcut": "shift+esc"})
-        self.api.activeWindow.signals.windowStarted.emit()
 
         if restoreState: self.api.activeWindow.signals.windowStateRestoring.emit()
         self.processArgv()
         if self.api.activeWindow.activeView: self.api.activeWindow.activeView.update()
         self.show()
+        # self.statusbar.startAnimation()
+        # self.statusbar.showStatusMessage("Hello")
+        self.w.signals.windowStarted.emit()
 
     def processArgv(self):
         self.api.activeWindow.openFiles([arg for arg in sys.argv[1:] if not arg.startswith("--log")])
@@ -229,13 +207,14 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         e.accept()
 
 def main():
+    sys.path.insert(0, ".")
     app = QtWidgets.QApplication(sys.argv)
     api = VtAPI(app)
     w = MainWindow(api)
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(e)
+    # try:
+    main()
+    # except Exception as e:
+    #     print(e)

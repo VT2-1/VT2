@@ -1,6 +1,6 @@
 from PySide6 import QtWidgets, QtCore, QtGui
 from typing import *
-import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil, builtins, traceback, time
+import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil, builtins, traceback, time, heapq
 import urllib.request as requests
 import importlib.util
 
@@ -57,8 +57,9 @@ class PluginManager:
         try:
             sys.path.insert(0, self.plugin_directory)
             for plugDir in os.listdir(self.plugin_directory):
-                self.fullPath = os.path.join(self.plugin_directory, plugDir)
-                self.plugins[plugDir] = self.fullPath
+                if self.__windowApi.Path(VtAPI.Path.joinPath(self.plugin_directory, plugDir)).isDir():
+                    self.fullPath = os.path.join(self.plugin_directory, plugDir)
+                    self.plugins[plugDir] = self.fullPath
 
             if self.plugins.get("Basic"):
                 self.loadPlugin("Basic")
@@ -122,14 +123,12 @@ class PluginManager:
                         # sys.modules['PyQt6.QtWidgets'].QApplication = oldQApp
                         # sys.modules['PyQt6.QtGui'].QGuiApplication = oldGuiApp
                         # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.INFO)
                 except Exception as e:
                     print(self.name, e)
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load plugin '{}' commands: {}").format(self.name, e), self.__windowApi.ERROR)
                     self.module = None
-
                 finally:
-                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.INFO)
-
                     sys.path.pop(0)
             if self.menuFile:
                 self.loadMenu(self.menuFile, module=self.module, path=fullPath)
@@ -235,7 +234,6 @@ class PluginManager:
                 self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Executed command '{}'").format(command))
                 if out:
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' returned '{}'").format(command, out), self.__windowApi.ERROR)
-
             except Exception as e:
                 traceback.print_exc()
                 self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Found error in '{}' - '{}'").format(command, e), self.__windowApi.ERROR)
@@ -574,8 +572,8 @@ api.addWindow(w)
             for dock in dock_widgets:
                 if self.__mw.dockWidgetArea(dock) == area: return dock
 
-        def statusMessage(self, text, timeout=None):
-            self.__mw.statusbar.showMessage(text, timeout)
+        def statusMessage(self, text, timeout=0):
+            self.__mw.statusbar.showStatusMessage(text, timeout)
 
     class View:
         def __init__(self, api, window, qwclass=None):
@@ -936,6 +934,15 @@ api.addWindow(w)
         
         def create(self):
             os.makedirs(self.path)
+        
+        def normalize(self):
+            return os.path.normpath(self.path)
+        
+        def dir(self):
+            return os.listdir(self.path)
+        
+        def remove(self):
+            os.remove(self.path)
 
     class File:
         def __init__(self, path: str = None, encoding="utf-8"):
@@ -1020,7 +1027,6 @@ api.addWindow(w)
 
             def __del__(self):
                 for signal in self.__signals:
-                    self.window.signals.findSignal(signal).disconnect()
                     self.window.signals.deleteSignal(signal)
             
             def addSignal(self, name, signal):
@@ -1063,86 +1069,6 @@ api.addWindow(w)
                 return self.x == other.x and self.y == other.y
             return False
 
-    class Signals(QtCore.QObject):
-        tabClosed = QtCore.Signal(object)
-        tabCreated = QtCore.Signal()
-        tabChanged = QtCore.Signal(object, object)
-
-        textChanged = QtCore.Signal()
-
-        windowClosed = QtCore.Signal()
-        windowStarted = QtCore.Signal()
-        windowStateRestoring = QtCore.Signal()
-        windowRunningStateInited = QtCore.Signal()
-        windowStateSaving = QtCore.Signal()
-
-        logWrited = QtCore.Signal(str)
-
-        treeWidgetClicked = QtCore.Signal(QtCore.QModelIndex)
-        treeWidgetDoubleClicked = QtCore.Signal(QtCore.QModelIndex)
-        treeWidgetActivated = QtCore.Signal()
-
-        fileOpened = QtCore.Signal(object)
-        fileSaved = QtCore.Signal(object)
-        fileTagInited = QtCore.Signal(object)
-
-        fileTagAdded = QtCore.Signal(object, str)
-        fileTagRemoved = QtCore.Signal(object, str)
-
-        def __init__(self, w):
-            super().__init__(w)
-            self.__window: QtWidgets.QMainWindow = w
-            self.__windowApi: VtAPI = self.__window.api
-            self._signals = {}
-
-        def __getattr__(self, name):
-            if name in self._signals:
-                return self._signals[name]
-            raise AttributeError(f"'Signals' object has no attribute '{name}'")
-
-        def addSignal(self, signalName: str, signal):
-            if not signalName in self._signals: self._signals[signalName] = signal
-            else: raise self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Signals already has signal '{}'".format(signalName)))
-
-        def deleteSignal(self, signalName: str):
-            if signalName in self._signals: self._signals.pop(signalName)
-
-        def findSignal(self, signalName: str):
-            return self._signals.get(signalName)
-
-        def tabChngd(self, index):
-            widget = self.__window.tabWidget.currentWidget()
-            try:
-                if widget:
-                    view = self.__windowApi.View(self.__windowApi, self.__windowApi.activeWindow, qwclass=widget)
-                    view.id = widget.objectName().split("-")[-1]
-                    for v in self.__windowApi.activeWindow.views:
-                        if v == view:
-                            self.tabChanged.emit(self.__windowApi.activeWindow.activeView, v)
-                            self.__windowApi.activeWindow.focus(v)
-                            self.updateEncoding()
-                            break
-                    else:
-                        self.__window.setWindowTitle(self.__windowApi.appName)
-                else:
-                    self.__window.setWindowTitle(self.__windowApi.appName)
-            except Exception as e:
-                self.__window.setWindowTitle(self.__windowApi.appName)
-                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when updating tabs: {}").format(e))
-
-        def updateEncoding(self):
-            e = self.__windowApi.activeWindow.activeView.getEncoding()
-            self.__window.encodingLabel.setText(e.upper())
-
-        def onDoubleClicked(self, index):
-            self.treeWidgetDoubleClicked.emit(index)
-
-        def onClicked(self, index):
-            self.treeWidgetClicked.emit(index)
-
-        def onActivated(self):
-            self.treeWidgetActivated.emit()
-
     class Widgets:
         class DockWidget(QtWidgets.QDockWidget):
             def __init__(self, parent=None):
@@ -1184,6 +1110,107 @@ api.addWindow(w)
         class Action(QtGui.QAction):
             def __init__(self, *args, **kwargs):
                 super.__init__(*args, **kwargs)
+
+        class Signal(QtCore.QObject):
+            """
+            Custom signal with priority support.
+            """
+            def __init__(self, *args, **kwargs):
+                super().__init__()
+                self._signal = QtCore.Signal(*args)
+                self._queue = []
+                self._timer = QtCore.QTimer(self)
+                self._args = []
+                self._kwargs = {}
+
+            def connect(self, slot, priority=1):
+                """
+                Connects a slot to the signal with a specified priority.
+                """
+                self._queue.append((priority, slot))
+
+            def emit(self, *args, **kwargs):
+                """Emits the signal, calling all connected slots in order of priority. """
+                for priority, slot in sorted(self._queue, key=lambda x: x[0], reverse=True):
+                    slot()
+                    # try: slot(*args, **kwargs)
+                    # except Exception as e: print(e)
+
+            def disconnect(self, slot):
+                for sl in self._queue:
+                    if sl[1] == slot:
+                        self._queue.remove(sl)
+
+    class Signals(QtCore.QObject):
+        def __init__(self, w):
+            super().__init__(w)
+            self.__window: QtWidgets.QMainWindow = w
+            self.__windowApi: VtAPI = self.__window.api
+            self._signals = {}
+
+            self.addSignal("tabClosed", VtAPI.Widgets.Signal(object))
+            self.addSignal("tabCreated", VtAPI.Widgets.Signal())
+            self.addSignal("tabChanged", VtAPI.Widgets.Signal(object, object))
+
+            self.addSignal("textChanged", VtAPI.Widgets.Signal())
+
+            self.addSignal("windowClosed", VtAPI.Widgets.Signal())
+            self.addSignal("windowStarted", VtAPI.Widgets.Signal())
+            self.addSignal("windowStateRestoring", VtAPI.Widgets.Signal())
+            self.addSignal("windowRunningStateInited", VtAPI.Widgets.Signal())
+            self.addSignal("windowStateSaving", VtAPI.Widgets.Signal())
+
+            self.addSignal("logWrited", VtAPI.Widgets.Signal(str))
+
+            self.addSignal("treeWidgetClicked", VtAPI.Widgets.Signal(QtCore.QModelIndex))
+            self.addSignal("treeWidgetDoubleClicked", VtAPI.Widgets.Signal(QtCore.QModelIndex))
+            self.addSignal("treeWidgetActivated", VtAPI.Widgets.Signal())
+
+            self.addSignal("fileOpened", VtAPI.Widgets.Signal(object))
+            self.addSignal("fileSaved", VtAPI.Widgets.Signal(object))
+            self.addSignal("fileTagInited", VtAPI.Widgets.Signal(object))
+
+            self.addSignal("fileTagAdded", VtAPI.Widgets.Signal(object, str))
+            self.addSignal("fileTagRemoved", VtAPI.Widgets.Signal(object, str))
+
+        def __getattr__(self, name):
+            if name in self._signals:
+                return self._signals[name]
+            raise AttributeError(f"'Signals' object has no attribute '{name}'")
+
+        def addSignal(self, signalName: str, signal):
+            if not signalName in self._signals: self._signals[signalName] = signal
+            else: raise self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Signals already has signal '{}'".format(signalName)))
+
+        def deleteSignal(self, signalName: str):
+            if signalName in self._signals: self._signals.pop(signalName)
+
+        def findSignal(self, signalName: str):
+            return self._signals.get(signalName)
+
+        def tabChngd(self, index):
+            widget = self.__window.tabWidget.currentWidget()
+            try:
+                if widget:
+                    view = self.__windowApi.View(self.__windowApi, self.__windowApi.activeWindow, qwclass=widget)
+                    view.id = widget.objectName().split("-")[-1]
+                    for v in self.__windowApi.activeWindow.views:
+                        if v == view:
+                            self.tabChanged.emit(self.__windowApi.activeWindow.activeView, v)
+                            self.__windowApi.activeWindow.focus(v)
+                            self.updateEncoding()
+                            break
+                    else:
+                        self.__window.setWindowTitle(self.__windowApi.appName)
+                else:
+                    self.__window.setWindowTitle(self.__windowApi.appName)
+            except Exception as e:
+                self.__window.setWindowTitle(self.__windowApi.appName)
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when updating tabs: {}").format(e))
+
+        def updateEncoding(self):
+            e = self.__windowApi.activeWindow.activeView.getEncoding()
+            self.__window.encodingLabel.setText(e.upper())
 
     def activeWindow(self) -> Window:
         return self.activeWindow
@@ -1302,68 +1329,6 @@ api.addWindow(w)
 
     def packagesPath(self):
         return self.packagesDir
-
-import re
-
-class CommandParser:
-    def __init__(self):
-        self.signal_activate_pattern = r'^signal:activate (?P<signal_name>\w+)\[(?P<data>.+?)\]$'
-        self.signal_exists_pattern = r'^signal:exists (?P<signal_name>\w+)$'
-        
-        self.command_exists_pattern = r'^command:exists (?P<command_name>\w+)$'
-        self.command_run_pattern = r'^command:run (?P<dict_data>\{.*\})$'
-        
-        self.api_version_pattern = r'^api:version$'
-        self.api_command_pattern1 = r'^api:command (?P<command_name>\w+)$'
-        self.api_command_pattern2 = r'^api:command (?P<command_name>\w+)\[(?P<data>.+?)\]$'
-        self.api_command_pattern = self.api_command_pattern1 or self.api_command_pattern2
-
-    def parse(self, input_line):
-        patterns = [
-            (self.signal_activate_pattern, self.handle_signal_activate),
-            (self.signal_exists_pattern, self.handle_signal_exists),
-            (self.command_exists_pattern, self.handle_command_exists),
-            (self.command_run_pattern, self.handle_command_run),
-            (self.api_version_pattern, self.handle_api_version),
-            (self.api_command_pattern, self.handle_api_command),
-        ]
-        
-        for pattern, handler in patterns:
-            match = re.match(pattern, input_line)
-            if match:
-                handler(match)
-                return
-        
-        print("Invalid command.")
-
-    def handle_signal_activate(self, match):
-        signal_name = match.group('signal_name')
-        data = match.group('data')
-        print(f"Activating signal '{signal_name}' with data: {data}")
-
-    def handle_signal_exists(self, match):
-        signal_name = match.group('signal_name')
-        print(f"Checking if signal '{signal_name}' exists")
-
-    def handle_command_exists(self, match):
-        command_name = match.group('command_name')
-        print(f"Checking if command '{command_name}' exists")
-
-    def handle_command_run(self, match):
-        dict_data = match.group('dict_data')
-        print(f"Running command with data: {dict_data}")
-
-    def handle_api_version(self, match):
-        print("Fetching API version")
-
-    def handle_api_command(self, match):
-        command_name = match.group('command_name')
-        try:
-            data = match.group('data')
-        except: data = None
-        print(f"Running API command {command_name} with data: {data}")
-        if hasattr(self.api, command_name):
-            self.api.command_name()
 
 # parser = CommandParser()
 
