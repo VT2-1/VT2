@@ -163,15 +163,26 @@ class StandartHighlighter(QtGui.QSyntaxHighlighter):
         document.contentsChange.connect(self.onContentsChange)
 
     def highlightBlock(self, text):
-        for category in self.highlightingRules.keys():
-            for pattern_info in self.highlightingRules[category]:
-                pattern, index, fmt = pattern_info
-                match = pattern.match(text)  # Используйте match для поиска совпадений
+        for category, rule in self.highlightingRules.items():
+            text_format = QtGui.QTextCharFormat()
+            text_format.setForeground(QtGui.QColor(rule['color']))
+            if 'weight' in rule:
+                if rule['weight'] == 'bold':
+                    text_format.setFontWeight(QtGui.QFont.Weight.Bold)
+                elif rule['weight'] == 'italic':
+                    text_format.setFontItalic(True)
+            
+            if 'bg' in rule:
+                text_format.setBackground(QtGui.QColor(rule['bg']))
+            
+            for pattern in rule['pattern']:
+                regex = QtCore.QRegularExpression(pattern)
+                match = regex.match(text)
                 while match.hasMatch():
-                    start = match.capturedStart()
-                    end = match.capturedEnd()
-                    self.setFormat(start, end - start, fmt)  # Установить формат
-                    match = pattern.match(text, end)  # Ищем следующее совпадение
+                    start_pos = match.capturedStart()
+                    length = match.capturedLength()
+                    self.setFormat(start_pos, length, text_format)
+                    match = regex.match(text, start_pos + length)
 
         self.setCurrentBlockState(0)
 
@@ -310,15 +321,14 @@ class TextEdit(QtWidgets.QTextEdit):
 
     def keyPressEvent(self, event: QtGui.QKeyEvent):
         tc = self.textCursor()
-        if event.key() in {
-            Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
-            Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt
-        } or event.modifiers() in {Qt.KeyboardModifier.ControlModifier, Qt.KeyboardModifier.ShiftModifier}:
-            self.mw.keyPressEvent(event)
-            event.accept()
-            return
+        if event.modifiers() in {Qt.KeyboardModifier.ControlModifier, Qt.KeyboardModifier.ShiftModifier}:
+            action = self.mw.keyPressEvent(event)
+            if action:
+                event.accept()
+                return
+            else:
+                QtWidgets.QTextEdit.keyPressEvent(self, event)
         else:
-            # self.mw.keyPressEvent(event)
             QtWidgets.QTextEdit.keyPressEvent(self, event)
         self.mw.api.activeWindow.activeView.setSaved(False)
         if event.key() == Qt.Key.Key_Tab and self.completer.popup().isVisible():

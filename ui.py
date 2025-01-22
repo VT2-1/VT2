@@ -191,7 +191,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if hasattr(self, "pl"):
             if type(getattr(self, "pl")) == PluginManager:
                 action = self.pl.findActionShortcut(modifier_string + key_text)
-                if action: action.trigger()
+                if action:
+                    action.trigger()
+                    return action
 
     def dragEnterEvent(self, event): [event.acceptProposedAction() if event.mimeData().hasUrls() else ""]
 

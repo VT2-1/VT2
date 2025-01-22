@@ -1132,9 +1132,8 @@ api.addWindow(w)
             def emit(self, *args, **kwargs):
                 """Emits the signal, calling all connected slots in order of priority. """
                 for priority, slot in sorted(self._queue, key=lambda x: x[0], reverse=True):
-                    slot()
-                    # try: slot(*args, **kwargs)
-                    # except Exception as e: print(e)
+                    try: slot(*args, **kwargs)
+                    except Exception as e: slot()
 
             def disconnect(self, slot):
                 for sl in self._queue:
