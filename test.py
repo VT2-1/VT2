@@ -1,69 +1,92 @@
-import heapq
-from PySide6 import QtCore, QtWidgets
+from PySide6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
+    QStackedWidget, QFrame, QSplitter, QTabWidget
+)
+from PySide6.QtCore import Qt, QPropertyAnimation
 
-class SignalWithPriority(QtCore.QObject):
-    """
-    Custom signal with priority support.
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self._signal = QtCore.Signal(*args)
-        self._queue = []
-        self._timer = QtCore.QTimer(self)
-        self._args = []
-        self._kwargs = {}
 
-    def connect(self, slot, priority=1):
-        """
-        Connects a slot to the signal with a specified priority.
-        """
-        self._queue.append((priority, slot))
-
-    def emit(self, *args, **kwargs):
-        """
-        Emits the signal, calling all connected slots in order of priority.
-        """
-        while self._queue:
-            priority, slot = max(self._queue)
-            print(priority)
-            self._queue.pop(self._queue.index(max(self._queue)))
-            slot(*args, **kwargs)
-
-# Example usage
-class ExampleWindow(QtWidgets.QWidget):
+class SideMenu(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Signal with Priority Example")
-        self.setGeometry(100, 100, 300, 200)
+        self.setWindowTitle("VSCode-like Side Menu")
 
-        # Create a custom signal with priority handling
-        self.signal = SignalWithPriority(str)
+        # Main layout
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Connect slots with different priorities
-        self.signal.connect(self.on_first_slot, priority=1)
-        self.signal.connect(self.on_second_slot, priority=10)
+        # Splitter to separate side menu and tab widget
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setHandleWidth(1)
+        self.main_layout.addWidget(self.splitter)
 
-        # Button to emit signal
-        self.button = QtWidgets.QPushButton("Emit Signal", self)
-        self.button.clicked.connect(self.emit_signal)
-        self.button.setGeometry(50, 50, 200, 50)
+        # Left panel: Icon bar
+        self.icon_frame = QFrame()
+        self.icon_frame.setFixedWidth(50)
+        self.icon_frame.setStyleSheet("background-color: #2D2D2D;")
 
-    def emit_signal(self):
-        """Emit the custom signal when the button is clicked."""
-        print("Emitting signal...")
-        self.signal.emit("str")  # Emit the signal, triggering connected slots
+        self.icon_layout = QVBoxLayout(self.icon_frame)
+        self.icon_layout.setContentsMargins(0, 0, 0, 0)
+        self.icon_layout.setSpacing(0)
 
-    def on_first_slot(self, s):
-        """Slot with higher priority (priority=2)."""
-        print(f"First Slot (priority 2): {s}")
+        self.lastWidth = 0
 
-    def on_second_slot(self, s):
-        """Slot with lower priority (priority=1)."""
-        print(f"Second Slot (priority 1): {s}")
+        # Add icons
+        self.buttons = []
+        for i in range(4):
+            btn = QPushButton(f"Tab {i+1}")
+            btn.setCheckable(True)
+            btn.setStyleSheet("color: white; background: none; border: none; padding: 10px;")
+            btn.clicked.connect(lambda _, idx=i: self.switch_tab(idx))
+            self.icon_layout.addWidget(btn)
+            self.buttons.append(btn)
 
+        # Filler to push icons to the top
+        self.icon_layout.addStretch()
+
+        # Right panel: Content for tabs
+        self.content_frame = QFrame()
+        self.content_layout = QVBoxLayout(self.content_frame)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.content_stack = QStackedWidget()
+        self.content_stack.setStyleSheet("background-color: #3C3F41;")
+        for i in range(4):
+            tab = QWidget()
+            tab_layout = QVBoxLayout(tab)
+            tab_layout.addWidget(QPushButton(f"Content for Tab {i+1}"))
+            tab_layout.setContentsMargins(10, 10, 10, 10)
+            self.content_stack.addWidget(tab)
+
+        self.content_layout.addWidget(self.content_stack)
+
+        # Add left and right panels to splitter
+        self.splitter.addWidget(self.icon_frame)
+        self.splitter.addWidget(self.content_frame)
+        self.splitter.setSizes([50, 950])  # Set initial sizes: icons fixed, content flexible
+
+        # Animation for hiding content
+        self.is_hidden = False
+
+    def switch_tab(self, index):
+        self.content_stack.setCurrentIndex(index)
+        for btn in self.buttons:
+            btn.setChecked(False)
+        self.buttons[index].setChecked(True)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_B and event.modifiers() == Qt.ControlModifier:
+            self.toggle_tabs()
+
+    def toggle_tabs(self):
+        if not self.is_hidden:
+            self.lastWidth = self.content_frame.width()
+            self.splitter.setSizes([50, 0])  # Set initial sizes: icons fixed, content flexible
+        else:
+            self.splitter.setSizes([50, self.lastWidth])  # Set initial sizes: icons fixed, content flexible
+        self.is_hidden = not self.is_hidden
 
 if __name__ == "__main__":
-    app = QtWidgets.QApplication([])
-    window = ExampleWindow()
+    app = QApplication([])
+    window = SideMenu()
     window.show()
     app.exec()

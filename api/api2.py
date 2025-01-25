@@ -4,10 +4,11 @@ import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil
 import urllib.request as requests
 import importlib.util
 
-from api import VtAPI
-
 BLOCKED = [
-    "PyQt6"
+    "PyQt6",
+    "PyQt5",
+    "PyQt4",
+    "shiboken"
 ]
 
 oldCoreApp = QtCore.QCoreApplication
@@ -493,7 +494,7 @@ api.addWindow(w)
 
         def setLogMsg(self, msg, t=""):
             msg = f"""<i style="color: {t};">{msg}</i>"""
-            self.__mw.logger.log += f"<br>{time.strftime("[%H:%M:%S %d %b]", time.localtime())}: {msg}"
+            self.__mw.logger.log += f"<br>{time.strftime('[%H:%M:%S %d %b];', time.localtime())}: {msg}"
 
         def currentTreeIndex(self):
             return self.__mw.treeView.currentIndex()
@@ -634,6 +635,7 @@ api.addWindow(w)
 
         def setText(self, text):
             self.__tab.textEdit.safeSetText(text)
+            self.setSaved(False)
             return text
 
         def getFile(self):
@@ -673,7 +675,8 @@ api.addWindow(w)
             return self.__tabWidget.isSaved(self.__tab)
 
         def setSaved(self, b: bool):
-            self.__tabWidget.tabBar().setTabSaved(self.__tab or self.__tabWidget.currentWidget(), b)
+            self.__tabWidget.tabBar().setTabSaved(self.__tab, b)
+            print(self.getTitle(), b)
             return b
 
         def size(self):
@@ -694,6 +697,7 @@ api.addWindow(w)
                 cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
             textEdit.safeSetText(string, cursor)
             textEdit.setTextCursor(cursor)
+            self.setSaved(False)
         
         def erase(self, region: "VtAPI.Region"):
             t = self.__tab.textEdit.toPlainText()
@@ -702,21 +706,31 @@ api.addWindow(w)
         def replace(self, region: "VtAPI.Region", string):
             t = self.__tab.textEdit.toPlainText()
             self.__tab.textEdit.setPlainText(t[:region.begin()] + string + t[region.end():])
+            self.setSaved(False)
 
         def undo(self):
             self.__tab.textEdit.undo()
+            self.setSaved(False)
 
         def redo(self):
-            self.__tab.textEdit.redo()
+            if self.__tab.textEdit.document().isRedoAvailable():
+                self.__tab.textEdit.redo()
+                self.setSaved(False)
 
         def cut(self):
-            self.__tab.textEdit.cut()
+            if self.__tab.textEdit.document().isUndoAvailable():
+                self.__tab.textEdit.cut()
+                self.setSaved(False)
 
         def copy(self):
             self.__tab.textEdit.copy()
 
         def paste(self):
             self.__tab.textEdit.paste()
+            self.setSaved(False)
+
+        def clearUndoRedoStacks(self):
+            self.__tab.textEdit.document().clearUndoRedoStacks()
 
         def selectAll(self):
             self.__tab.textEdit.selectAll()
@@ -760,7 +774,11 @@ api.addWindow(w)
             self.completer = self.__tab.textEdit.completer.updateCompletions(lst)
 
         def setHighlighter(self, hl: dict):
-            self.__tab.textEdit.highLighter.highlightingRules = hl
+            for _type in hl:
+                self.__tab.textEdit.highLighter.addHighlightingRule(_type, hl.get(_type))
+        
+        def setAddititionalHL(self, data):
+            self.__tab.textEdit.highLighter.addHighlightingData(data)
 
         def rehighlite(self):
             self.__tab.textEdit.highLighter.rehighlight()
@@ -848,6 +866,7 @@ api.addWindow(w)
         def fromFile(self, f: "VtAPI.File"):
             self.content = "".join(f.read())
             self.settings = json.loads(self.content)
+            return self
 
     class Dialogs:
         def infoMessage(string, title=None):
@@ -970,14 +989,14 @@ api.addWindow(w)
             with open(self.path, 'w', encoding=self.encoding) as file:
                 for i in range(0, total_length, chunk):
                     chunkk = content[i:i + chunk]
-                    file.write(chunkk)
+                    file.write(str(chunkk))
 
         def exists(self): return os.path.isfile(self.path)
 
         def create(self, rewrite=False):
             if rewrite:
                 open(self.path, "a+", encoding=self.encoding).close()
-            elif not self.exists(): open(self.path, "a+", encoding=self.encoding).close()
+            elif not self.exists(): open(self.path, "a", encoding=self.encoding).close()
 
     class Theme:
         def __init__(self, name: str | None = None, path: str | None = None):
@@ -994,7 +1013,7 @@ api.addWindow(w)
             return os.path.isfile(self.path)
 
     class Plugin:
-        def __init__(self, api: VtAPI, name: str, path: str):
+        def __init__(self, api:"VtAPI", name: str, path: str):
             self.api: VtAPI = api
             self.name = name
             self.path = path
@@ -1007,7 +1026,7 @@ api.addWindow(w)
             window._Window__mw.pl.loadPlugin(self.name)
 
         class ApplicationCommand(QtCore.QObject):
-            def __init__(self, api: VtAPI):
+            def __init__(self, api: "VtAPI"):
                 super().__init__()
                 self.api = api
 
@@ -1016,7 +1035,7 @@ api.addWindow(w)
             def description(self): ...
 
         class WindowCommand(ApplicationCommand):
-            def __init__(self, api: VtAPI, window: VtAPI.Window):
+            def __init__(self, api: "VtAPI", window: "VtAPI.Window"):
                 super().__init__(api)
                 self.window = window
                 self.__signals = {}
@@ -1034,7 +1053,7 @@ api.addWindow(w)
                 self.window.signals.addSignal(name, signal)
 
         class TextCommand(WindowCommand):
-            def __init__(self, api: VtAPI, view: VtAPI.View):
+            def __init__(self, api: "VtAPI", view: "VtAPI.View"):
                 super().__init__(api, view.window())
                 self.view = view
 
@@ -1328,12 +1347,3 @@ api.addWindow(w)
 
     def packagesPath(self):
         return self.packagesDir
-
-# parser = CommandParser()
-
-# parser.parse("signal:activate signalName[data]")
-# parser.parse("signal:exists signalName")
-# parser.parse("command:exists commandName")
-# parser.parse("command:run {\"key\": \"value\"}")
-# parser.parse("api:version")
-# parser.parse("api:command commandName")

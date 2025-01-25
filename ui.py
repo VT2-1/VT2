@@ -2,7 +2,7 @@ from PySide6 import QtCore, QtWidgets
 import sys, uuid
 
 from addit import *
-from api2 import PluginManager, VtAPI
+from api.api2 import PluginManager, VtAPI
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow, argv=[], api=None):
@@ -216,7 +216,7 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    # try:
-    main()
-    # except Exception as e:
-    #     print(e)
+    try:
+        main()
+    except Exception as e:
+        print(e)

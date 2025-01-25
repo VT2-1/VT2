@@ -158,78 +158,118 @@ class MiniMap(QtWidgets.QTextEdit):
 class StandartHighlighter(QtGui.QSyntaxHighlighter):
     def __init__(self, document: QtGui.QTextDocument):
         super().__init__(document)
-
         self.highlightingRules = {}
-        document.contentsChange.connect(self.onContentsChange)
+        self.multi_line_rules = []
+        self.additData = []
+
+    def addHighlightingRule(self, category, rule):
+        if category == "multi_line_strings":
+            self.multi_line_rules.append(rule)
+        else:
+            self.highlightingRules[category] = rule
+
+    def addHighlightingData(self, data):
+        self.additData = data
 
     def highlightBlock(self, text):
+        block_start_line = self.document().findBlockByNumber(self.currentBlock().blockNumber()).blockNumber()
+
         for category, rule in self.highlightingRules.items():
-            text_format = QtGui.QTextCharFormat()
-            text_format.setForeground(QtGui.QColor(rule['color']))
-            if 'weight' in rule:
-                if rule['weight'] == 'bold':
-                    text_format.setFontWeight(QtGui.QFont.Weight.Bold)
-                elif rule['weight'] == 'italic':
-                    text_format.setFontItalic(True)
-            
-            if 'bg' in rule:
-                text_format.setBackground(QtGui.QColor(rule['bg']))
-            
+            text_format = self.createTextFormat(rule)
             for pattern in rule['pattern']:
                 regex = QtCore.QRegularExpression(pattern)
-                match = regex.match(text)
-                while match.hasMatch():
-                    start_pos = match.capturedStart()
-                    length = match.capturedLength()
+                match = regex.globalMatch(text)
+                while match.hasNext():
+                    match_item = match.next()
+                    start_pos = match_item.capturedStart()
+                    length = match_item.capturedLength()
                     self.setFormat(start_pos, length, text_format)
-                    match = regex.match(text, start_pos + length)
+
+        if self.additData:
+            for data in self.additData:
+                if data['line'] == block_start_line:
+                    start_pos, end_pos = data['pos']
+                    text_format = QtGui.QTextCharFormat()
+                    
+                    if 'color' in data:
+                        text_format.setForeground(QtGui.QColor(data['color']))
+                    if 'bg' in data:
+                        text_format.setBackground(QtGui.QColor(data['bg']))
+                    if 'weight' in data:
+                        if data['weight'] == 'bold':
+                            text_format.setFontWeight(QtGui.QFont.Weight.Bold)
+                        elif data['weight'] == 'italic':
+                            text_format.setFontItalic(True)
+
+                    # Устанавливаем формат подсветки на определенные участки
+                    self.setFormat(start_pos, end_pos - start_pos, text_format)
 
         self.setCurrentBlockState(0)
 
-        if self.highlightingRules.get("multi_line_strings"):
-            in_multiline_single = self.match_multiline(
-                text, 
-                self.highlightingRules['multi_line_strings'][0][0],  # Получаем первый разделитель
-                1, 
-                self.highlightingRules['multi_line_strings'][0][1]  # Получаем стиль для многострочных строк
-            )
-            
-            if not in_multiline_single:
-                in_multiline_double = self.match_multiline(
-                    text, 
-                    self.highlightingRules['multi_line_strings'][1][0],  # Получаем второй разделитель
-                    2, 
-                    self.highlightingRules['multi_line_strings'][1][1]  # Получаем стиль для многострочных строк
-                )
+        for rule in self.multi_line_rules:
+            self.applyMultilineHighlighting(text, rule)
 
-    def match_multiline(self, text, delimiter, in_state, style):
-        if self.previousBlockState() == in_state:
+
+    def createTextFormat(self, rule):
+        """
+        Создает QTextCharFormat на основе правила.
+        :param rule: Словарь с параметрами форматирования.
+        :return: QTextCharFormat.
+        """
+        text_format = QtGui.QTextCharFormat()
+        if 'color' in rule:
+            text_format.setForeground(QtGui.QColor(rule['color']))
+        if 'bg' in rule:
+            text_format.setBackground(QtGui.QColor(rule['bg']))
+        if 'weight' in rule:
+            if rule['weight'] == 'bold':
+                text_format.setFontWeight(QtGui.QFont.Weight.Bold)
+            elif rule['weight'] == 'italic':
+                text_format.setFontItalic(True)
+        return text_format
+
+    def applyMultilineHighlighting(self, text, rule):
+        """
+        Применяет подсветку для многострочных строк.
+        :param text: Текст блока.
+        :param rule: Словарь с параметрами (start, end, style).
+        """
+        start_delim = QtCore.QRegularExpression(rule['start'])
+        end_delim = QtCore.QRegularExpression(rule['end'])
+        text_format = self.createTextFormat(rule)
+
+        if self.previousBlockState() == 1:
             start = 0
-        else:
-            match = delimiter.match(text)  # Получаем совпадение
-            if match.hasMatch():
-                start = match.capturedStart()
-            else:
-                start = -1
-
-        while start >= 0:
-            # Ищем следующее совпадение
-            match = delimiter.match(text, start)
+            match = end_delim.match(text)
             if match.hasMatch():
                 end = match.capturedEnd()
-                length = end - start
-                self.setFormat(start, length, style)
-                start = end  # Переход к следующему символу после совпадения
+                self.setFormat(start, end - start, text_format)
+                self.setCurrentBlockState(0)
             else:
-                self.setCurrentBlockState(in_state)  # Сохраняем состояние блока
-                break  # Выход из цикла, если больше нет совпадений
+                self.setFormat(start, len(text), text_format)
+                self.setCurrentBlockState(1)
+            return
 
-        return self.currentBlockState() == in_state
+        match = start_delim.match(text)
+        while match.hasMatch():
+            start = match.capturedStart()
+            match = end_delim.match(text, start + 1)
+            if match.hasMatch():
+                end = match.capturedEnd()
+                self.setFormat(start, end - start, text_format)
+                self.setCurrentBlockState(0)
+            else:
+                self.setFormat(start, len(text) - start, text_format)
+                self.setCurrentBlockState(1)
 
+    def rehighlightBlock(self, block):
+        """
+        Переподсвечивает определенный блок.
+        :param block: QTextBlock для обработки.
+        """
+        cursor = QtGui.QTextCursor(block)
+        self.highlightBlock(cursor.block().text())
 
-    def onContentsChange(self, position, charsRemoved, charsAdded):
-        if charsAdded > 0:
-            self.rehighlight()
 
 class StandartCompleter(QCompleter):
     insertText = QtCore.Signal(str)
@@ -258,6 +298,62 @@ class StandartCompleter(QCompleter):
         else:
             self.model.setStringList([])
 
+class LineNumberArea(QtWidgets.QWidget):
+    def __init__(self, text_edit):
+        super().__init__(text_edit)
+        self.text_edit = text_edit
+        self.text_edit.viewport().installEventFilter(self)
+        self.text_edit.verticalScrollBar().valueChanged.connect(self.update)
+        self.text_edit.textChanged.connect(self.update)
+        self.font = self.text_edit.font()
+
+        self.update_width()
+
+    def update_width(self):
+        """Updates the width of the line number area."""
+        block_count = self.text_edit.document().blockCount()
+        digits = len(str(max(1, block_count)))
+        font_metrics = QtGui.QFontMetrics(self.font)
+        self.setFixedWidth(10 + font_metrics.horizontalAdvance("9") * digits)
+
+    def paintEvent(self, event):
+        """Paint line numbers."""
+        painter = QtGui.QPainter(self)
+        painter.fillRect(event.rect(), QtGui.QColor(240, 240, 240))
+
+        block = self.text_edit.document().begin()
+        block_number = block.blockNumber()
+        top = -self.text_edit.verticalScrollBar().value()
+        font_metrics = QtGui.QFontMetrics(self.text_edit.font())
+
+        while block.isValid():
+            block_geometry = self.text_edit.document().documentLayout().blockBoundingRect(block)
+            block_top = int(block_geometry.translated(0, top).top())
+            block_bottom = block_top + int(block_geometry.height())
+
+            if block_top > event.rect().bottom():
+                break
+
+            if block_bottom >= event.rect().top():
+                number = str(block_number + 1)
+                painter.drawText(
+                    0,
+                    block_top,
+                    self.width(),
+                    font_metrics.height(),
+                    QtCore.Qt.AlignRight,
+                    number,
+                )
+
+            block = block.next()
+            block_number += 1
+
+    def eventFilter(self, obj, event):
+        """Handle events from the text edit viewport."""
+        if obj == self.text_edit.viewport() and event.type() == QtCore.QEvent.Paint:
+            self.update()
+        return super().eventFilter(obj, event)
+
 class TextEdit(QtWidgets.QTextEdit):
     def __init__(self, mw):
         super().__init__()
@@ -268,11 +364,14 @@ class TextEdit(QtWidgets.QTextEdit):
         self.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.contextMenu)
         self.setShortcutEnabled(False)
+        self.setLineWrapMode(QtWidgets.QTextEdit.LineWrapMode.WidgetWidth)
 
         self.minimap = MiniMap(self)
         self.minimap.setTextEdit(self)
+        self.line_number_area = LineNumberArea(self)
 
         self.layout = QtWidgets.QHBoxLayout()
+        self.layout.addWidget(self.line_number_area)
         self.layout.addWidget(self)
 
         self.minimapScrollArea = QtWidgets.QScrollArea()
@@ -292,6 +391,21 @@ class TextEdit(QtWidgets.QTextEdit):
         self.highLighter = StandartHighlighter(self.document())
         self.highLighter.setDocument(self.document())
 
+        self.textChanged.connect(self.update_line_number_width)
+
+    def update_line_number_width(self):
+        self.line_number_area.update_width()
+
+    def update_line_number_area(self):
+        self.line_number_area.update()
+
+    def applyAdditionalHighlighting(self):
+        cursor = self.textCursor()
+        cursor.select(QtGui.QTextCursor.Document)  # Выбираем весь документ
+        text = cursor.selectedText()  # Получаем весь текст из документа
+
+        self.highLighter.highlightBlock(text)
+
     def safeSetText(self, text, cursor=None):
         self.change_event = True
         if not cursor:
@@ -299,7 +413,6 @@ class TextEdit(QtWidgets.QTextEdit):
         else:
             cursor.insertText(text)
         self.mw.api.activeWindow.signals.textChanged.emit()
-        self.highLighter.rehighlight()
         self.change_event = False
 
     def contextMenu(self, pos):
@@ -330,7 +443,7 @@ class TextEdit(QtWidgets.QTextEdit):
                 QtWidgets.QTextEdit.keyPressEvent(self, event)
         else:
             QtWidgets.QTextEdit.keyPressEvent(self, event)
-        self.mw.api.activeWindow.activeView.setSaved(False)
+            self.mw.api.activeWindow.activeView.setSaved(False)
         if event.key() == Qt.Key.Key_Tab and self.completer.popup().isVisible():
             self.completer.insertText.emit(self.completer.getSelected())
             self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
