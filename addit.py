@@ -1,3 +1,4 @@
+import functools
 from PySide6 import QtCore, QtGui, QtWidgets
 from PySide6.QtWidgets import QCompleter
 from PySide6.QtCore import QStringListModel, Qt, Slot
@@ -432,6 +433,9 @@ class TextEdit(QtWidgets.QTextEdit):
             self.completer.setWidget(self)
         QtWidgets.QTextEdit.focusInEvent(self, event)
 
+    @functools.lru_cache
+    def textLen(self): return len(self.toPlainText())
+
     def keyPressEvent(self, event: QtGui.QKeyEvent):
         tc = self.textCursor()
         if event.modifiers() in {Qt.KeyboardModifier.ControlModifier, Qt.KeyboardModifier.ShiftModifier}:
@@ -444,6 +448,7 @@ class TextEdit(QtWidgets.QTextEdit):
         else:
             QtWidgets.QTextEdit.keyPressEvent(self, event)
             self.mw.api.activeWindow.activeView.setSaved(False)
+        self.textLen.cache_clear()
         if event.key() == Qt.Key.Key_Tab and self.completer.popup().isVisible():
             self.completer.insertText.emit(self.completer.getSelected())
             self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
@@ -563,7 +568,7 @@ class TabWidget (QtWidgets.QTabWidget):
         self.verticalLayout.addLayout(self.tab.textEdit.layout)
 
         newView = self.api.View(self.api, self.api.activeWindow, qwclass=self.tab)
-        self.api.activeWindow.views.append(newView)
+        self.api.activeWindow.addView(newView)
 
         self.addTab(self.tab, "")
         self.api.activeWindow.setTab(-1)
@@ -610,7 +615,7 @@ class TabWidget (QtWidgets.QTabWidget):
                     pass
             else:
                 self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
-                self.MainWindow.api.activeWindow.views.remove(self.MainWindow.api.activeWindow.activeView)
+                self.MainWindow.api.activeWindow.delView(self.MainWindow.api.activeWindow.activeView)
                 tab.deleteLater()
                 self.removeTab(currentIndex)
 

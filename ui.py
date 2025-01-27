@@ -1,8 +1,9 @@
 from PySide6 import QtCore, QtWidgets
+from concurrent.futures import ThreadPoolExecutor
 import sys, uuid
 
 from addit import *
-from api.api2 import PluginManager, VtAPI
+from api2 import PluginManager, VtAPI
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow, argv=[], api=None):
@@ -49,7 +50,8 @@ class Ui_MainWindow(object):
         self.statusbar = StatusBar(parent=self.MainWindow)
         self.statusbar.setAnimationList(["▁", "▂", "▅", "▆", "▇"])
         self.MainWindow.setStatusBar(self.statusbar)
-        self.tagBase = TagDB(self.api.Path.joinPath(self.api.packagesDirs, ".ft"))
+        self.tagBasePath = self.api.Path.joinPath(self.api.packagesDirs, ".ft")
+        self.tagBase = TagDB(self.tagBasePath)
         self.logger = self.MainWindow.logger
         self.MainWindow.logStdout = self.settData.get("logStdout")
 
@@ -115,6 +117,49 @@ class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
     def run(self):
         MainWindow(self.api)
 
+class LoadBasicCommand(VtAPI.Plugin.ApplicationCommand):
+    def __init__(self, api):
+        super().__init__(api)
+        self.api: VtAPI
+        self.requests = self.api.importModule("requests")
+        self.zipfile = self.api.importModule("zipfile")
+        self.shutil = self.api.importModule("shutil")
+    def run(self, url):
+        with ThreadPoolExecutor() as executor:
+            future = executor.submit(self._downloadPlugin, url)
+            return future.result()
+    def _downloadPlugin(self, url):
+        url = "https://github.com/cherry220-v/Basic"
+        self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Plugin 'Basic' not found. Trying to install last version from '{}'".format(url), self.__windowApi.WARNING))
+
+        try:
+            tempdirName = "vt-basic-install"
+            path = self.api.Path.joinPath(self.api.replacePaths("%TEMP%") or self.api.Path(__file__).dirName(), tempdirName)
+            self.api.Path(path).create()
+
+            filePath = self.api.Path.joinPath(path, "package.zip")
+            self.requests.urlretrieve(url + "/zipball/master", filePath)
+            with self.zipfile.ZipFile(filePath, 'r') as f:
+                f.extractall(path)
+            self.api.Path(filePath).remove()
+
+            extracted_dir = next(
+                self.api.Path.joinPath(path, d) for d in self.api.Path(path).dir()
+                if self.api.Path(self.api.Path.joinPath(path, d).isDir())
+            )
+            finalPackageDir = self.api.Path.joinPath(self.__windowApi.packagesDirs, "Plugins", url.split("/")[-1])
+            self.api.Path(self.__windowApi.packagesDirs, exist_ok=True).create()
+
+            self.shutil.move(extracted_dir, finalPackageDir)
+            self.loadPlugin("Basic")
+            self.plugins.pop("Basic")
+        except Exception as e:
+            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when loading plugin from '{}'".format(url), self.__windowApi.ERROR))
+
+        finally:
+            self.shutil.rmtree(path)
+            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'Basic' plugin succesfully installed. Reboot the app", self.__windowApi.INFO))
+
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
         super().__init__()
@@ -136,6 +181,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         self.tabWidget.currentChanged.connect(self.api.activeWindow.signals.tabChngd)
         self.tabWidget.tabCloseRequested.connect(lambda i: self.api.activeWindow.runCommand({"command": "CloseTabCommand", "kwargs": {"view": self.api.View(self.api, self.api.activeWindow, self.tabWidget.widget(i))}}))
+        self.w.registerCommandClass({"command": LoadBasicCommand})
 
         #####################################
 
@@ -149,7 +195,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
 
         if restoreState: self.api.activeWindow.signals.windowStateRestoring.emit()
         self.processArgv()
-        if self.api.activeWindow.activeView: self.api.activeWindow.activeView.update()
         self.show()
         # self.statusbar.startAnimation()
         # self.statusbar.showStatusMessage("Hello")
@@ -164,7 +209,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     # PYQT 6 standart events
 
     def eventFilter(self, a0, a1):
-        if type(a1) in [QtGui.QHoverEvent, QtGui.QMoveEvent, QtGui.QResizeEvent, QtGui.QMouseEvent]:
+        if isinstance(a1, (QtGui.QHoverEvent, QtGui.QMoveEvent, QtGui.QResizeEvent, QtGui.QMouseEvent)):
             for window in self.api.windows:
                 if window._Window__mw == a0:
                     self.api.activeWindow = window
@@ -213,10 +258,11 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     api = VtAPI(app)
     w = MainWindow(api)
+    if w.w.activeView: print(w.w.activeView.size())
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(e)
+    # try:
+    main()
+    # except Exception as e:
+    #     print(e)

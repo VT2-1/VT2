@@ -1,7 +1,8 @@
 from PySide6 import QtWidgets, QtCore, QtGui
 from typing import *
-import os, sys, json, importlib, re, platform, inspect, asyncio, zipfile, shutil, builtins, traceback, time, heapq
+import os, sys, json, importlib, re, platform, inspect, asyncio, builtins, traceback, time
 import urllib.request as requests
+import functools
 import importlib.util
 
 BLOCKED = [
@@ -66,38 +67,7 @@ class PluginManager:
                 self.loadPlugin("Basic")
                 self.plugins.pop("Basic")
             else:
-                url = "https://github.com/cherry220-v/Basic"
-                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Plugin 'Basic' not found. Trying to install last version from '{}'".format(url), self.__windowApi.WARNING))
-
-                try:
-                    tempdirName = "vt-basic-install"
-                    path = os.path.join(os.getenv("TEMP") or os.path.dirname(__file__), tempdirName)
-                    os.makedirs(path)
-
-                    filePath = os.path.join(path, "package.zip")
-                    requests.urlretrieve(url + "/zipball/master", filePath)
-                    with zipfile.ZipFile(filePath, 'r') as f:
-                        f.extractall(path)
-                    os.remove(filePath)
-
-                    extracted_dir = next(
-                        os.path.join(path, d) for d in os.listdir(path)
-                        if os.path.isdir(os.path.join(path, d))
-                    )
-                    finalPackageDir = os.path.join(self.__windowApi.packagesDirs, "Plugins", url.split("/")[-1])
-                    os.makedirs(self.__windowApi.packagesDirs, exist_ok=True)
-
-                    shutil.move(extracted_dir, finalPackageDir)
-                    self.loadPlugin("Basic")
-                    self.plugins.pop("Basic")
-                except Exception as e:
-                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when loading plugin from '{}'".format(url), self.__windowApi.ERROR))
-
-                finally:
-                    shutil.rmtree(path)
-                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'Basic' plugin succesfully installed. Reboot the app", self.__windowApi.INFO))
-
-            
+                self.__windowApi.activeWindow.runCommand({"command": "LoadBasicCommand", "kwargs": {"url": "https://github.com/cherry220-v/Basic"}})
             for pl in self.plugins:
                 self.loadPlugin(pl)
         except Exception as e:
@@ -369,13 +339,14 @@ class PluginManager:
             menu.clear()
 
 class VtAPI:
+    __slots__ = ('_VtAPI__app', '_VtAPI__windows', '_VtAPI__activeWindow', 'STATEFILE', 'CLOSINGSTATEFILE', 'INFO', 'WARNING', 'ERROR', '__weakref__', 'packagesDirs', 'pluginsDir', 'uiDir', 'themesDir', 'cacheDir', 'appName', '__version__')
     def __init__(self, app=None):
         try:
             self.__app = QtWidgets.QApplication.instance()
         except:
             self.__app: QtWidgets.QApplication = app
-        self.windows = []
-        self.activeWindow: VtAPI.Window | None = None
+        self.__windows = []
+        self.__activeWindow: VtAPI.Window | None = None
 
         self.STATEFILE = {}
         self.CLOSINGSTATEFILE = {}
@@ -386,6 +357,7 @@ class VtAPI:
 
     class Window:
         """Окно и управление им"""
+        __slots__ = ['api', '_Window__mw', 'signals', '_Window__views', '_Window__activeView', 'model', 'id']
         def __init__(self, api: "VtAPI", id: Optional[str] = None, views: Optional[List['VtAPI.View']] = None, activeView: Optional['VtAPI.View'] = None, qmwclass: Optional[QtWidgets.QMainWindow] = None) -> None:
             """Инициализация для использования
 ```
@@ -397,10 +369,13 @@ api.addWindow(w)
             self.api: VtAPI = api
             self.__mw: QtWidgets.QMainWindow = qmwclass
             self.signals: VtAPI.Signals = VtAPI.Signals(self.__mw)
-            self.views = views or []
-            self.activeView: VtAPI.View | None = activeView
+            self.__views = views or []
+            self.__activeView: VtAPI.View | None = activeView
             self.model = QtWidgets.QFileSystemModel()
             self.id = id
+        
+        def __eq__(self, value):
+            return self.id == value.id
 
         def newFile(self) -> 'VtAPI.View':
             """Создаёт новую вкладку"""
@@ -415,14 +390,38 @@ api.addWindow(w)
             """Сохраняет текст вкладки (Запускает стандартную привязанную команду SaveFileCommand)"""
             self.runCommand({"command": "SaveFileCommand", "kwargs": {"dlg": dlg}})
         
+        @property
         def activeView(self) -> 'VtAPI.View':
             """Получает активную вкладку"""
-            return self.activeView
-
-        def views(self) -> List['VtAPI.View']:
-            """Получает список вкладок"""
-            return self.views
+            return self.__activeView
         
+        @activeView.setter
+        def activeView(self, view: 'VtAPI.View') -> Optional['VtAPI.View']:
+            for v in self.__views:
+                if v == view:
+                    self.__activeView = v
+                    break
+                    return v
+            return None
+                    
+        @property
+        def views(self) -> Tuple['VtAPI.View']:
+            """Получает список вкладок"""
+            return tuple(self.__views)
+        
+        def addView(self, view: 'VtAPI.View') -> True:
+            for v in self.__views:
+                if v == view:
+                    return True
+            self.__views.append(view)
+            return True
+        
+        def delView(self, view: 'VtAPI.View') -> True:
+            for v in self.__views:
+                if v == view:
+                    self.__views.remove(v)
+                    return True
+
         def state(self) -> dict:
             """Получает состояние окна"""
             return self.api.STATEFILE.get(self.id)
@@ -442,8 +441,12 @@ api.addWindow(w)
         def setUpdatesEnabled(self, b: bool):
             self.__mw.setUpdatesEnabled(b)
 
-        def setTitle(self, s):
+        def getTitle(self) -> str:
+            return self.__mw.windowTitle()
+
+        def setTitle(self, s: str) -> str:
             self.__mw.setWindowTitle(f"{s} - {self.api.appName}")
+            return self.getTitle()
 
         def focus(self, view):
             if view in self.views:
@@ -577,26 +580,27 @@ api.addWindow(w)
             self.__mw.statusbar.showStatusMessage(text, timeout)
 
     class View:
-        def __init__(self, api, window, qwclass=None):
+        __slots__ = ['api', '_View__tab', 'tagBase', '_View__window', '_View__tagBase', '_View__tabWidget', '_View__id']
+        def __init__(self, api, window, qwclass=None, id=None):
             self.api: VtAPI = api
             self.__window: VtAPI.Window = window
             self.__tab: QtWidgets.QWidget = qwclass
             if self.__tab:
-                self.id: str = self.__tab.objectName().split("-")[-1]
+                self.__id: str = self.__tab.objectName().split("-")[-1]
                 self.__tabWidget: QtWidgets.QTabWidget = self.window()._Window__mw.tabWidget
                 self.tagBase = window._Window__mw.tagBase
             else:
-                self.id = None
+                self.__id = id
                 self.__tabWidget = None
                 self.tagBase = None
 
         def __eq__(self, other):
             if not isinstance(other, VtAPI.View):
                 return NotImplemented
-            return self.id == other.id
+            return self.id() == other.id()
         
         def id(self):
-            return self.id
+            return self.__id
 
         def update(self):
             view = VtAPI.View(self.api, self.__window, qwclass=self.__tabWidget.currentWidget())
@@ -611,7 +615,7 @@ api.addWindow(w)
 
         def close(self):
             return self.__tabWidget.closeTab(self.__tab)
-
+        
         def window(self):
             return self.__window
 
@@ -680,7 +684,7 @@ api.addWindow(w)
             return b
 
         def size(self):
-            return len(self.__tab.textEdit.toPlainText())
+            return self.__tab.textEdit.textLen()
 
         def substr(self, region: "VtAPI.Region"):
             return self.__tab.textEdit.toPlainText()[region.begin():region.end()]
@@ -781,7 +785,10 @@ api.addWindow(w)
             self.__tab.textEdit.highLighter.addHighlightingData(data)
 
         def rehighlite(self):
-            self.__tab.textEdit.highLighter.rehighlight()
+            QtCore.QMetaObject.invokeMethod(
+                self.__tab.textEdit.highLighter, "rehighlight",
+                QtCore.Qt.QueuedConnection
+            )
 
         def setMmapHidden(self, b: bool):
             if b:
@@ -826,6 +833,7 @@ api.addWindow(w)
         def contains(self, point):
             return any(region.contains(point) for region in self.regions)
 
+        @functools.lru_cache
         def text(self, view, region):
             return view.__tab.toPlainText()[region.begin():region.end()]
 
@@ -1030,7 +1038,7 @@ api.addWindow(w)
                 super().__init__()
                 self.api = api
 
-            def run(self): ...
+            def run(self): raise NotImplementedError("You must rewrite 'run' function of your command")
 
             def description(self): ...
 
@@ -1039,10 +1047,6 @@ api.addWindow(w)
                 super().__init__(api)
                 self.window = window
                 self.__signals = {}
-
-            def run(self): ...
-
-            def description(self): ...
 
             def __del__(self):
                 for signal in self.__signals:
@@ -1056,11 +1060,6 @@ api.addWindow(w)
             def __init__(self, api: "VtAPI", view: "VtAPI.View"):
                 super().__init__(api, view.window())
                 self.view = view
-
-            def run(self, edit): ...
-
-            def description(self): ...
-
     class Point:
         def __init__(self, x=0, y=0):
             """Инициализация точки с координатами x и y."""
@@ -1210,8 +1209,7 @@ api.addWindow(w)
             widget = self.__window.tabWidget.currentWidget()
             try:
                 if widget:
-                    view = self.__windowApi.View(self.__windowApi, self.__windowApi.activeWindow, qwclass=widget)
-                    view.id = widget.objectName().split("-")[-1]
+                    view = self.__windowApi.View(self.__windowApi, self.__windowApi.activeWindow, id=widget.objectName().split("-")[-1])
                     for v in self.__windowApi.activeWindow.views:
                         if v == view:
                             self.tabChanged.emit(self.__windowApi.activeWindow.activeView, v)
@@ -1228,55 +1226,53 @@ api.addWindow(w)
 
         def updateEncoding(self):
             e = self.__windowApi.activeWindow.activeView.getEncoding()
-            self.__window.encodingLabel.setText(e.upper())
+            self.__window.statusBar().encodingLabel.setText(e.upper())
 
+    @property
     def activeWindow(self) -> Window:
-        return self.activeWindow
+        return self.__activeWindow
+    
+    @activeWindow.setter
+    def activeWindow(self, w: Window):
+        self.__activeWindow = w
+        return w
 
+    @property
     def windows(self):
-        return self.windows
+        return tuple(self.__windows)
     
     def addWindow(self, window: Window):
-        self.windows.append(window)
+        self.__windows.append(window)
 
-    def isDir(self, path): return os.path.isdir(path)
+    @staticmethod
+    def isDir(path): return os.path.isdir(path)
 
-    def loadSettings(self, path=None, pl=None):
-        if pl and not path:
-            path = os.path.dirname(pl)
-        if os.path.isfile(path):
-            with open(path, "r+") as f:
-                return json.load(f)
-        else:
-            return {}
-
-    def saveSettings(self, data, path=None, pl=None):
-        if pl and not path:
-            path = os.path.dirname(pl)
-        if os.path.isfile(path):
-            with open(path, "r+") as f:
-                json.dump(data, f)
-
-    def importModule(self, name):
+    @staticmethod
+    def importModule(name):
         return importlib.import_module(name)
 
-    def setTimeout(self, function, delay):
+    @staticmethod
+    def setTimeout(function, delay):
         QtCore.QTimer.singleShot(delay, function)
 
-    async def setTimeout_async(self, function, delay):
+    @staticmethod
+    async def setTimeout_async(function, delay):
         await asyncio.sleep(delay / 1000)
         function()
 
-    def version(self):
-        return "4.0"
+    @staticmethod
+    def version():
+        return "1.3"
 
-    def platform(self):
+    @staticmethod
+    def platform():
         current_platform = platform.system()
         if current_platform == "Darwin":
             return "OSX"
         return current_platform
 
-    def arch(self):
+    @staticmethod
+    def arch():
         if sys.maxsize > 2**32:
             if platform.system() == "Windows":
                 return "x64"
@@ -1284,8 +1280,9 @@ api.addWindow(w)
                 return "amd64"
         else:
             return "x86"
-    
-    def replaceConsts(self, data, constants):
+
+    @staticmethod
+    def replaceConsts(data, constants):
         stack = [data]
         result = data
 
@@ -1320,14 +1317,16 @@ api.addWindow(w)
 
         return result
 
-    def findKey(self, p, d):
+    @staticmethod
+    def findKey(p, d):
         current = d
         for key in p.split("."):
             if isinstance(current, dict) and key in current: current = current[key]
             else: return None
         return current
 
-    def addKey(self, p, value, d):
+    @staticmethod
+    def addKey(p, value, d):
         path = p.split(".")
         current = d
         for key in path[:-1]:
@@ -1336,13 +1335,15 @@ api.addWindow(w)
             current = current[key]
         current[path[-1]] = value
 
-    def replacePaths(self, data):
+    @staticmethod
+    def replacePaths(data):
         def replace_var(match):
             env_var = match.group(1)
             return os.getenv(env_var, f'%{env_var}%')
         return re.sub(r'%([^%]+)%', replace_var, data)
 
-    def defineLocale(self):
+    @staticmethod
+    def defineLocale():
         return QtCore.QLocale.system().name().split("_")[0]
 
     def packagesPath(self):
