@@ -27,17 +27,10 @@ class Ui_MainWindow(object):
         self.horizontalLayout = QtWidgets.QHBoxLayout(self.centralwidget)
         self.horizontalLayout.setObjectName("horizontalLayout")
 
-        self.treeView = TreeWidget(parent=self.centralwidget, w=self.MainWindow)
-        self.treeView.setMinimumWidth(150)
-        self.treeView.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.NoContextMenu)
-        self.treeView.setMaximumWidth(300)
-        self.treeView.setObjectName("treeWidget")
-
         self.treeSplitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
         self.horizontalLayout.addWidget(self.treeSplitter)
 
         self.tabWidget = TabWidget(parent=self.centralwidget, MainWindow=self.MainWindow)
-        self.treeSplitter.addWidget(self.treeView)
         self.treeSplitter.addWidget(self.tabWidget)
 
         self.MainWindow.setCentralWidget(self.centralwidget)
@@ -158,7 +151,7 @@ class LoadBasicCommand(VtAPI.Plugin.ApplicationCommand):
 
         finally:
             self.shutil.rmtree(path)
-            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'Basic' plugin succesfully installed. Reboot the app", self.__windowApi.INFO))
+            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'Basic' plugin succesfully installed. Reboot the app", self.__windowApi.Color.INFO))
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
@@ -258,11 +251,10 @@ def main():
     app = QtWidgets.QApplication(sys.argv)
     api = VtAPI(app)
     w = MainWindow(api)
-    if w.w.activeView: print(w.w.activeView.size())
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    # try:
-    main()
-    # except Exception as e:
-    #     print(e)
+    try:
+        main()
+    except Exception as e:
+        print(e)

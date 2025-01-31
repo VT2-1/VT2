@@ -1,3 +1,4 @@
+from enum import Enum
 from PySide6 import QtWidgets, QtCore, QtGui
 from typing import *
 import os, sys, json, importlib, re, platform, inspect, asyncio, builtins, traceback, time
@@ -71,7 +72,7 @@ class PluginManager:
             for pl in self.plugins:
                 self.loadPlugin(pl)
         except Exception as e:
-            print(e, self.__windowApi.ERROR)
+            print(e, self.__windowApi.Color.ERROR)
         finally:
             os.chdir(self.dPath)
 
@@ -94,10 +95,10 @@ class PluginManager:
                         # sys.modules['PyQt6.QtWidgets'].QApplication = oldQApp
                         # sys.modules['PyQt6.QtGui'].QGuiApplication = oldGuiApp
                         # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
-                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.INFO)
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.Color.INFO)
                 except Exception as e:
                     print(self.name, e)
-                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load plugin '{}' commands: {}").format(self.name, e), self.__windowApi.ERROR)
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load plugin '{}' commands: {}").format(self.name, e), self.__windowApi.Color.ERROR)
                     self.module = None
                 finally:
                     sys.path.pop(0)
@@ -202,14 +203,14 @@ class PluginManager:
                 elif issubclass(cl, VtAPI.Plugin.ApplicationCommand):
                     c = cl(self.__windowApi)
                 out = c.run(*args or [], **kwargs or {})
-                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Executed command '{}'").format(command))
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Executed command '{}'").format(command), self.__windowApi.Color.INFO)
                 if out:
-                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' returned '{}'").format(command, out), self.__windowApi.ERROR)
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' returned '{}'").format(command, out), self.__windowApi.Color.ERROR)
             except Exception as e:
                 traceback.print_exc()
-                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Found error in '{}' - '{}'").format(command, e), self.__windowApi.ERROR)
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Found error in '{}' - '{}'").format(command, e), self.__windowApi.Color.ERROR)
         else:
-            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' not found").format(command))
+            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' not found").format(command), self.__windowApi.Color.WARNING)
 
     def registerClass(self, data):
         commandClass = data.get("command")
@@ -288,7 +289,6 @@ class PluginManager:
                 print(commandN)
                 self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' not found").format(commandN))
 
-
     def findAction(self, parent_menu, caption=None, command=None):
         for action in parent_menu.actions():
             if caption and action.text() == caption:
@@ -339,7 +339,7 @@ class PluginManager:
             menu.clear()
 
 class VtAPI:
-    __slots__ = ('_VtAPI__app', '_VtAPI__windows', '_VtAPI__activeWindow', 'STATEFILE', 'CLOSINGSTATEFILE', 'INFO', 'WARNING', 'ERROR', '__weakref__', 'packagesDirs', 'pluginsDir', 'uiDir', 'themesDir', 'cacheDir', 'appName', '__version__')
+    __slots__ = ('_VtAPI__app', '_VtAPI__windows', '_VtAPI__activeWindow', 'STATEFILE', 'CLOSINGSTATEFILE', '__weakref__', 'packagesDirs', 'pluginsDir', 'uiDir', 'themesDir', 'cacheDir', 'appName', '__version__')
     def __init__(self, app=None):
         try:
             self.__app = QtWidgets.QApplication.instance()
@@ -350,14 +350,17 @@ class VtAPI:
 
         self.STATEFILE = {}
         self.CLOSINGSTATEFILE = {}
-
-        self.INFO = ""
-        self.WARNING = "yellow"
-        self.ERROR = "red"
+    
+    class Color(Enum):
+        INFO = ""
+        WARNING = "#edba00"
+        ERROR = "#e03c00"
+        SUCCESS = "#61a600"
+        BLUE = "#4034eb"
 
     class Window:
         """Окно и управление им"""
-        __slots__ = ['api', '_Window__mw', 'signals', '_Window__views', '_Window__activeView', 'model', 'id']
+        __slots__ = ('api', '_Window__mw', 'signals', '_Window__views', '_Window__activeView', 'model', 'id')
         def __init__(self, api: "VtAPI", id: Optional[str] = None, views: Optional[List['VtAPI.View']] = None, activeView: Optional['VtAPI.View'] = None, qmwclass: Optional[QtWidgets.QMainWindow] = None) -> None:
             """Инициализация для использования
 ```
@@ -495,25 +498,9 @@ api.addWindow(w)
         def getLog(self):
             return self.__mw.logger.log
 
-        def setLogMsg(self, msg, t=""):
-            msg = f"""<i style="color: {t};">{msg}</i>"""
+        def setLogMsg(self, msg, t: "VtAPI.Color" = None):
+            msg = f"""<i style="color: {t.value if t else ""};">{msg}</i>"""
             self.__mw.logger.log += f"<br>{time.strftime('[%H:%M:%S %d %b];', time.localtime())}: {msg}"
-
-        def currentTreeIndex(self):
-            return self.__mw.treeView.currentIndex()
-
-        def getTreeModel(self):
-            return self.model
-
-        def getModelElement(self, i):
-            return self.model.filePath(i)
-
-        def setTreeWidgetDir(self, dir):
-            self.model = QtWidgets.QFileSystemModel()
-            self.model.setRootPath(dir)
-            self.__mw.treeView.setModel(self.model)
-            self.__mw.treeView.setRootIndex(self.model.index(dir))
-            return self.model
 
         def setTab(self, i):
             self.__mw.tabWidget.setCurrentIndex(i - 1)
