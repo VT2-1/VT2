@@ -3,7 +3,8 @@ from concurrent.futures import ThreadPoolExecutor
 import sys, uuid
 
 from addit import *
-from api2 import PluginManager, VtAPI
+from api2 import PluginManager
+from API2Compile.api import VtAPI
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow, argv=[], api=None):
@@ -43,7 +44,7 @@ class Ui_MainWindow(object):
         self.statusbar = StatusBar(parent=self.MainWindow)
         self.statusbar.setAnimationList(["▁", "▂", "▅", "▆", "▇"])
         self.MainWindow.setStatusBar(self.statusbar)
-        self.tagBasePath = self.api.Path.joinPath(self.api.packagesDirs, ".ft")
+        self.tagBasePath = self.api.Path.joinPath(self.api.getFolder("packages"), ".ft")
         self.tagBase = TagDB(self.tagBasePath)
         self.logger = self.MainWindow.logger
         self.MainWindow.logStdout = self.settData.get("logStdout")
@@ -74,32 +75,32 @@ class Ui_MainWindow(object):
         try:
             self.settFile = self.api.File(self.api.Path.joinPath(self.appPath, 'ui/Main.settings'))
             if self.settFile.exists():
-                self.settData = self.api.Settings()
-                self.settData.fromFile(self.settFile)
+                self.settData = self.api.Settings.fromFile(self.settFile)
                 self.settData = self.settData.data()
             else:
                 raise FileNotFoundError("File doesn't exists")
         except Exception as e:
             self.settData = {}
             self.api.activeWindow.setLogMsg(self.translate("Error reading settings. Check /ui/Main.settings file", self.api.ERROR))
-        self.api.packagesDirs = self.settData.get("packageDirs") or "./Packages/"
-        if type(self.api.packagesDirs) == dict and self.api.packagesDirs:
-            self.api.packagesDirs = self.api.replacePaths(self.api.packagesDirs.get(self.api.platform()))
-            self.api.themesDir = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, "Themes"))
-            self.api.pluginsDir = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, "Plugins"))
-            self.api.uiDir = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, "Ui"))
-            self.api.cacheDir = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, "cache"))
-            for d in [self.api.packagesDirs, self.api.themesDir, self.api.pluginsDir, self.api.uiDir, self.api.cacheDir]:
+        tempD = self.settData.get("packageDirs") or "./Packages/"
+        print(self.settData)
+        if type(tempD) == dict and tempD:
+            self.api.setFolder("packages", self.api.replacePaths(tempD.get(self.api.platform())))
+            self.api.setFolder("themes", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Themes")))
+            self.api.setFolder("plugins", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Plugins")))
+            self.api.setFolder("ui", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Ui")))
+            self.api.setFolder("cache", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "cache")))
+            for d in [self.api.getFolder("packages"), self.api.getFolder("themes"), self.api.getFolder("plugins"), self.api.getFolder("ui"), self.api.getFolder("cache")]:
                 if not self.api.Path(d).isDir(): self.api.Path(d).create()
-            self.api.Path.chdir(self.api.packagesDirs)
+            self.api.Path.chdir(self.api.getFolder("packages"))
             self.dirsLoaded = True
         self.api.appName = self.settData.get("appName") or "VT2"
-        self.api.__version__ = self.settData.get("apiVersion") or "1.0"
+        # self.api.__version__ = self.settData.get("apiVersion") or "1.0"
         self.MainWindow.logStdout = self.settData.get("logStdout") or False
         self.saveState = self.settData.get("saveState") or True
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
         self.themeFile = ""
-        if self.settData.get("menu"): self.menuFile = self.api.replacePaths(self.api.Path.joinPath(self.api.packagesDirs, self.settData.get("menu")))
+        if self.settData.get("menu"): self.menuFile = self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), self.settData.get("menu")))
         else: self.menuFile = None
         self.themeFile = self.api.findKey("themeFile", self.settData)
         self.locale = self.api.findKey("locale", self.settData)
@@ -140,8 +141,8 @@ class LoadBasicCommand(VtAPI.Plugin.ApplicationCommand):
                 self.api.Path.joinPath(path, d) for d in self.api.Path(path).dir()
                 if self.api.Path(self.api.Path.joinPath(path, d).isDir())
             )
-            finalPackageDir = self.api.Path.joinPath(self.__windowApi.packagesDirs, "Plugins", url.split("/")[-1])
-            self.api.Path(self.__windowApi.packagesDirs, exist_ok=True).create()
+            finalPackageDir = self.api.Path.joinPath(self.__windowApi.getFolder("packages"), "Plugins", url.split("/")[-1])
+            self.api.Path(self.__windowApi.getFolder("packages"), exist_ok=True).create()
 
             self.shutil.move(extracted_dir, finalPackageDir)
             self.loadPlugin("Basic")
@@ -154,7 +155,7 @@ class LoadBasicCommand(VtAPI.Plugin.ApplicationCommand):
             self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'Basic' plugin succesfully installed. Reboot the app", self.__windowApi.Color.INFO))
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
-    def __init__(self, api=None, restoreState=True):
+    def __init__(self, api=None, restoreState=False):
         super().__init__()
         self.dirsLoaded = False
         self.wId = f"window-{str(uuid.uuid4())[:4]}"
@@ -181,8 +182,8 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         # self.dirsLoaded = False # Отладка (проверка независимости приложения от PluginManager и на правильную загрузку настроек)
 
         if self.dirsLoaded:
-            self.pl = PluginManager(self.api.pluginsDir, self)
-            if self.api.Path(self.api.Path.joinPath(self.api.uiDir, "locale")).isDir(): self.addTranslation(self.api.Path.joinPath(self.api.uiDir, "locale"))
+            self.pl = PluginManager(self.api.getFolder("plugins"), self)
+            if self.api.Path(self.api.Path.joinPath(self.api.getFolder("ui"), "locale")).isDir(): self.addTranslation(self.api.Path.joinPath(self.api.getFolder("ui"), "locale"))
             if self.menuFile and self.api.Path(self.menuFile).isFile(): self.pl.loadMenu(self.menuFile)
             self.pl.loadPlugins()
 
@@ -239,7 +240,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         files = [url.toLocalFile() for url in event.mimeData().urls()]
         openFile = self.api.activeWindow.getCommand("OpenFileCommand")
         if openFile: self.api.activeWindow.runCommand({"command": "OpenFileCommand", "kwargs": {"f": files}})
-        else: QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {self.api.Path.joinPath(self.api.pluginsDir, 'Open&Save')}")
+        else: QtWidgets.QMessageBox.warning(self.MainWindow, self.MainWindow.appName + " - Warning", f"Open file function not found. Check your Open&Save plugin at {self.api.Path.joinPath(self.api.getFolder("plugins"), 'Open&Save')}")
 
     def closeEvent(self, e: QtCore.QEvent):
         if self.saveState: self.api.activeWindow.signals.windowStateSaving.emit()
@@ -254,7 +255,7 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(e)
+    # try:
+    main()
+    # except Exception as e:
+    #     print(e)

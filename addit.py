@@ -32,10 +32,12 @@ class Logger:
 
     def write(self, message):
         if message:
-            if self.__window.logStdout:
-                self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
-                if self._file: self._file.write("\n"+message)
-                self.__window.api.activeWindow.signals.logWrited.emit(message)
+            try:
+                if self.__window.logStdout:
+                    self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
+                    if self._file: self._file.write("\n"+message)
+                    self.__window.api.activeWindow.signals.logWrited.emit(message)
+            except: pass
             self._stdout_backup.write(message)
 
     def flush(self):
