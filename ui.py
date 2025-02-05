@@ -94,7 +94,7 @@ class Ui_MainWindow(object):
                 if not self.api.Path(d).isDir(): self.api.Path(d).create()
             self.api.Path.chdir(self.api.getFolder("packages"))
             self.dirsLoaded = True
-        self.api.appName = self.settData.get("appName") or "VT2"
+        self.api.setAppName(self.settData.get("appName") or "VT2")
         # self.api.__version__ = self.settData.get("apiVersion") or "1.0"
         self.MainWindow.logStdout = self.settData.get("logStdout") or False
         self.saveState = self.settData.get("saveState") or True
@@ -155,7 +155,7 @@ class LoadBasicCommand(VtAPI.Plugin.ApplicationCommand):
             self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'Basic' plugin succesfully installed. Reboot the app", self.__windowApi.Color.INFO))
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
-    def __init__(self, api=None, restoreState=False):
+    def __init__(self, api=None, restoreState=True):
         super().__init__()
         self.dirsLoaded = False
         self.wId = f"window-{str(uuid.uuid4())[:4]}"

@@ -16,7 +16,7 @@ cdef public str _replace_var(str data):
         return os.getenv(env_var, f'%{env_var}%')
     return re.sub(r'%([^%]+)%', replace_var, data)
 
-cdef public str findKey(str p, dict d):
+cdef public findKey(str p, dict d):
     cdef object current = d
     cdef list path = p.split(".")
     cdef str key
@@ -805,6 +805,10 @@ cdef class Window:
 
     cpdef dict state(self): return self.api.STATEFILE.get(self.id) or {}
     
+    cpdef dict icsetState(self, dict data):
+        self.api.STATEFILE[self.id] = data
+        return self.state()
+
     cpdef dict plugins(self):
         if hasattr(self.__mw, "pl"):
             return self.__mw.pl.plugins
@@ -942,7 +946,7 @@ cdef class VtAPI:
     cdef list __windows
     cdef object __activeWindow
     cdef dict STATEFILE
-    cdef dict CLOSINGSTATEFILE
+    cdef dict __CLOSINGSTATEFILE
 
     cdef str __appName
     cdef str themesDir
@@ -976,7 +980,7 @@ cdef class VtAPI:
         self.__appName = "VT2"
         self.__activeWindow = None
         self.STATEFILE = {}
-        self.CLOSINGSTATEFILE = {}
+        self.__CLOSINGSTATEFILE = {}
 
         self.themesDir = ""  # Инициализация атрибутов
         self.packagesDir = ""
@@ -984,10 +988,13 @@ cdef class VtAPI:
         self.pluginsDir = ""
         self.cacheDir = ""
     @property
+    def CLOSINGSTATEFILE(self):
+        return self.__CLOSINGSTATEFILE
+
     def appName(self):
-        self.__appName = appName
-    @appName.setter
-    def appName(self, appName):
+        return self.__appName
+
+    def setAppName(self, appName):
         self.__appName = appName
     cpdef setFolder(self, str folder_type, str value):
         if folder_type == "themes":
@@ -1065,7 +1072,7 @@ cdef class VtAPI:
         return findKey(p, d)
 
     @staticmethod
-    def addKey(str p, str value, dict d):
+    def addKey(str p, value, dict d):
         addKey(p, value, d)
 
     @staticmethod

@@ -605,12 +605,12 @@ class TabWidget (QtWidgets.QTabWidget):
                 if result == QtWidgets.QMessageBox.StandardButton.Yes:
                     self.MainWindow.api.activeWindow.runCommand({"command": "SaveFileCommand", "args": [tab.file]})
                     self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
-                    self.MainWindow.api.activeWindow.views.remove(self.MainWindow.api.activeWindow.activeView)
+                    self.MainWindow.api.activeWindow.delView(self.MainWindow.api.activeWindow.activeView)
                     tab.deleteLater()
                     self.removeTab(currentIndex)
                 elif result == QtWidgets.QMessageBox.StandardButton.No:
                     self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
-                    self.MainWindow.api.activeWindow.views.remove(self.MainWindow.api.activeWindow.activeView)
+                    self.MainWindow.api.activeWindow.delView(self.MainWindow.api.activeWindow.activeView)
                     tab.deleteLater()
                     self.removeTab(currentIndex)
                 elif result == QtWidgets.QMessageBox.StandardButton.Cancel:

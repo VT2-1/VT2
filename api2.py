@@ -190,7 +190,7 @@ class PluginManager:
                 action = c.get("action")
                 if action and action.isCheckable():
                     if c.get("checkedStatePath"):
-                        value = self.__windowApi.findKey(c.get("checkedStatePath"), self.__windowApi.STATEFILE)
+                        value = self.__windowApi.findKey(c.get("checkedStatePath"), self.__windowApi.activeWindow.state())
                         if value in [True, False]:
                             if "restoring" in kwargs:
                                 action.setChecked(value)
