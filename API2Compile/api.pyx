@@ -3,6 +3,7 @@ from PySide6 import QtWidgets, QtCore, QtGui
 from typing import *
 import os, sys, json, importlib, re, platform, asyncio, time, functools
 import importlib.util
+import inspect
 
 cimport cython
 
@@ -61,12 +62,13 @@ cdef public str arch():
     else:
         return "x86"
 
-class Color(Enum):
+class Color(str, Enum):
     INFO = ""
     WARNING = "#edba00"
     ERROR = "#e03c00"
     SUCCESS = "#61a600"
     BLUE = "#4034eb"
+
 cdef class Selection:
     cdef list regions
     def __cinit__(self, regions=None):
@@ -107,8 +109,8 @@ cdef class Region:
         return self.begin() <= point <= self.end()
 
 cdef class Settings:
-    cdef dict settings
-    def __cinit__(self, dict settings=None):
+    cdef settings
+    def __cinit__(self, settings=None):
         self.settings = settings or {}
     
     cpdef dict data(self):
@@ -301,6 +303,7 @@ class Plugin:
     def load(self, window):
         window._Window__mw.pl.plugins[self.name] = self.path
         window._Window__mw.pl.loadPlugin(self.name)
+        window._Window__mw.pl.plugins.pop(self.name)
 
     class ApplicationCommand(QtCore.QObject):
         def __init__(self, api):
@@ -422,10 +425,17 @@ class Widgets:
              self._queue.append((priority, slot))
 
         def emit(self, *args, **kwargs):
-             """Emits the signal, calling all connected slots in order of priority. """
-             for priority, slot in sorted(self._queue, key=lambda x: x[0], reverse=True):
-                 try: slot(*args, **kwargs)
-                 except Exception as e: slot()
+            """Emits the signal, calling all connected slots in order of priority. """
+            for priority, slot in sorted(self._queue, key=lambda x: x[0], reverse=True):
+                try:
+                    sig = inspect.signature(slot)
+                    try:
+                        sig.bind(*args, **kwargs)
+                        slot(*args, **kwargs)
+                    except TypeError:
+                        slot()
+                except Exception as e:
+                    print(f"[Signal emit error] {slot} raised: {e}")
 
         def disconnect(self, slot):
              for sl in self._queue:
@@ -491,11 +501,11 @@ class Signals(QtCore.QObject):
                           self.updateEncoding()
                           break
                  else:
-                     self.__window.setWindowTitle(self.__windowApi.appName)
+                     self.__window.setWindowTitle(self.__windowApi.appName())
              else:
-                 self.__window.setWindowTitle(self.__windowApi.appName)
+                 self.__window.setWindowTitle(self.__windowApi.appName())
         except Exception as e:
-             self.__window.setWindowTitle(self.__windowApi.appName)
+             self.__window.setWindowTitle(self.__windowApi.appName())
              self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when updating tabs: {}").format(e))
 
     def updateEncoding(self):
@@ -916,22 +926,15 @@ cdef class Window:
        self.__mw.addDockWidget(areas, dock)
 
     cpdef void showDialog(self, object content, list flags=[], int location=-1, int width=320, int height=240, on_hide=None):
-        self.content = content
-        self.flags = flags
-        self.location = location
-        self.width = width
-        self.height = height
-        self.on_hide = on_hide
+        dialog = VtAPI.Widgets.Dialog(parent=self.__mw)
+        dialog.setWindowTitle(self.api.appName())
+        if flags:
+             dialog.setWindowFlags(flags)
+        dialog.setFixedWidth(width)
+        dialog.setFixedHeight(height)
 
-        self.dialog = VtAPI.Widgets.Dialog(parent=self.__mw)
-        self.dialog.setWindowTitle(self.api.appName)
-        if self.flags:
-             self.dialog.setWindowFlags(self.flags)
-        self.dialog.setFixedWidth(self.width)
-        self.dialog.setFixedHeight(self.height)
-
-        self.dialog.setLayout(self.content)
-        self.dialog.exec()
+        dialog.setLayout(content)
+        dialog.exec()
     
     def isDockWidget(self, area):
         dock_widgets = self.__mw.findChildren(QtWidgets.QDockWidget)

@@ -4,7 +4,33 @@ import sys, uuid
 
 from addit import *
 from api2 import PluginManager
-from API2Compile.api import VtAPI
+from api import VtAPI
+
+import sys
+import inspect
+
+def trace_calls(frame, event, arg):
+    if event != 'call':
+        return
+
+    code = frame.f_code
+    func_name = code.co_name
+    func_filename = code.co_filename
+    func_lineno = frame.f_lineno
+    args, _, _, values = inspect.getargvalues(frame)
+    if func_name not in ["eventFilter", "paintEvent", "updateLog", "print"] and not func_name.startswith("__") and not func_name.startswith("_") and not func_name.startswith("<") and not func_name.startswith("feauture") and not func_name.startswith("get"):
+        try:
+            arg_str = ', '.join(f'{a}={values[a]!r}' for a in args)
+            print(f'[CALL] {func_name}({arg_str}) at {func_filename}:{func_lineno}')
+        except:
+            pass
+    
+    def trace_returns(frame, event, arg):
+        if event == 'return' and func_name not in ["eventFilter", "paintEvent", "updateLog", "print"] and not func_name.startswith("__") and not func_name.startswith("_") and not func_name.startswith("<") and not func_name.startswith("feauture")  and not func_name.startswith("get"):
+            print(f'[RETURN] {func_name} -> {arg!r}')
+        return trace_returns
+
+    return trace_returns
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow, argv=[], api=None):
@@ -75,15 +101,14 @@ class Ui_MainWindow(object):
         try:
             self.settFile = self.api.File(self.api.Path.joinPath(self.appPath, 'ui/Main.settings'))
             if self.settFile.exists():
-                self.settData = self.api.Settings.fromFile(self.settFile)
-                self.settData = self.settData.data()
+                self.settData = self.api.Settings().fromFile(self.settFile).data()
             else:
                 raise FileNotFoundError("File doesn't exists")
         except Exception as e:
+            print(e)
             self.settData = {}
             self.api.activeWindow.setLogMsg(self.translate("Error reading settings. Check /ui/Main.settings file", self.api.ERROR))
         tempD = self.settData.get("packageDirs") or "./Packages/"
-        print(self.settData)
         if type(tempD) == dict and tempD:
             self.api.setFolder("packages", self.api.replacePaths(tempD.get(self.api.platform())))
             self.api.setFolder("themes", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Themes")))
@@ -111,23 +136,28 @@ class NewWindowCommand(VtAPI.Plugin.ApplicationCommand):
     def run(self):
         MainWindow(self.api)
 
-class LoadBasicCommand(VtAPI.Plugin.ApplicationCommand):
-    def __init__(self, api):
-        super().__init__(api)
+class LoadBasicCommand(VtAPI.Plugin.WindowCommand):
+    def __init__(self, api, window):
+        super().__init__(api, window)
         self.api: VtAPI
-        self.requests = self.api.importModule("requests")
+    def run(self, url):
+        thread = DownloadThread(self.api, self.window)
+        thread.start()
+        thread.wait()
+
+class DownloadThread(VtAPI.Widgets.Thread):
+    def __init__(self, api, window):
+        super().__init__()
+        self.api: VtAPI = api
+        self.window: VtAPI.Window = window
+        self.requests = self.api.importModule("urllib.request")
         self.zipfile = self.api.importModule("zipfile")
         self.shutil = self.api.importModule("shutil")
-    def run(self, url):
-        with ThreadPoolExecutor() as executor:
-            future = executor.submit(self._downloadPlugin, url)
-            return future.result()
-    def _downloadPlugin(self, url):
-        url = "https://github.com/cherry220-v/Basic"
-        self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Plugin 'Basic' not found. Trying to install last version from '{}'".format(url), self.__windowApi.WARNING))
-
+    def run(self):
+        url = "https://github.com/VT2-1/Basic"
+        self.api.activeWindow.setLogMsg(self.api.activeWindow.translate("Plugin 'Basic' not found. Trying to install last version from '{}'".format(url)), self.api.Color.WARNING)
+        tempdirName = "vt-basic-install"
         try:
-            tempdirName = "vt-basic-install"
             path = self.api.Path.joinPath(self.api.replacePaths("%TEMP%") or self.api.Path(__file__).dirName(), tempdirName)
             self.api.Path(path).create()
 
@@ -139,20 +169,18 @@ class LoadBasicCommand(VtAPI.Plugin.ApplicationCommand):
 
             extracted_dir = next(
                 self.api.Path.joinPath(path, d) for d in self.api.Path(path).dir()
-                if self.api.Path(self.api.Path.joinPath(path, d).isDir())
+                if self.api.Path(self.api.Path.joinPath(path, d)).isDir()
             )
-            finalPackageDir = self.api.Path.joinPath(self.__windowApi.getFolder("packages"), "Plugins", url.split("/")[-1])
-            self.api.Path(self.__windowApi.getFolder("packages"), exist_ok=True).create()
+            finalPackageDir = self.api.Path.joinPath(self.api.getFolder("packages"), "Plugins", url.split("/")[-1])
+            if not self.api.Path(self.api.getFolder("packages")).exists(): self.api.Path(self.api.getFolder("packages")).create()
 
             self.shutil.move(extracted_dir, finalPackageDir)
-            self.loadPlugin("Basic")
-            self.plugins.pop("Basic")
+            self.api.Dialogs.infoMessage("Basic loaded. Reload app")
         except Exception as e:
-            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when loading plugin from '{}'".format(url), self.__windowApi.ERROR))
-
+            self.api.activeWindow.setLogMsg(self.window.translate("Error when loading plugin from '{}'".format(url)), self.api.Color.ERROR)
         finally:
             self.shutil.rmtree(path)
-            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'Basic' plugin succesfully installed. Reboot the app", self.__windowApi.Color.INFO))
+            self.window.setLogMsg(self.window.translate("'Basic' plugin succesfully installed. Reboot the app"), self.api.Color.INFO)
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
@@ -171,11 +199,10 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.setupUi(self, self.argvParse(), self.api)
         self.api.activeWindow.setTitle("Main")
         self.installEventFilter(self)
-        # Commands/signals register area
+        # Signals register area
 
         self.tabWidget.currentChanged.connect(self.api.activeWindow.signals.tabChngd)
         self.tabWidget.tabCloseRequested.connect(lambda i: self.api.activeWindow.runCommand({"command": "CloseTabCommand", "kwargs": {"view": self.api.View(self.api, self.api.activeWindow, self.tabWidget.widget(i))}}))
-        self.w.registerCommandClass({"command": LoadBasicCommand})
 
         #####################################
 
@@ -185,11 +212,20 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
             self.pl = PluginManager(self.api.getFolder("plugins"), self)
             if self.api.Path(self.api.Path.joinPath(self.api.getFolder("ui"), "locale")).isDir(): self.addTranslation(self.api.Path.joinPath(self.api.getFolder("ui"), "locale"))
             if self.menuFile and self.api.Path(self.menuFile).isFile(): self.pl.loadMenu(self.menuFile)
+            
+            # Commands registering area
+
+            self.w.registerCommandClass({"command": LoadBasicCommand})
+
+            ####################################
+
             self.pl.loadPlugins()
 
         if restoreState: self.api.activeWindow.signals.windowStateRestoring.emit()
         self.processArgv()
         self.show()
+        # sys.settrace(trace_calls) # не использовать вместе с stdoutLog; отладочные выводы
+
         # self.statusbar.startAnimation()
         # self.statusbar.showStatusMessage("Hello")
         self.w.signals.windowStarted.emit()
@@ -255,7 +291,7 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    # try:
-    main()
-    # except Exception as e:
-    #     print(e)
+    try:
+        main()
+    except Exception as e:
+        print(e)

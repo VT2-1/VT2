@@ -1,22 +1,16 @@
-from enum import Enum
-from PySide6 import QtWidgets, QtCore, QtGui
-from typing import *
-import os, sys, json, importlib, re, platform, inspect, asyncio, builtins, traceback, time
-import urllib.request as requests
-import functools
+from PySide6 import QtWidgets, QtGui
+import os, sys, importlib, inspect, builtins, traceback
 import importlib.util
-from API2Compile.api import VtAPI
+from api import VtAPI
 
-BLOCKED = [
+BLOCKED = [ # не позволяет добавить импорт сторонней версии PyQt|PySide. Защищает от вылета
     "PyQt6",
     "PyQt5",
     "PyQt4",
-    "shiboken"
+    "shiboken",
+    "PySide2",
+    "PySide6"
 ]
-
-oldCoreApp = QtCore.QCoreApplication
-oldQApp = QtWidgets.QApplication
-oldGuiApp = QtGui.QGuiApplication
 
 class SafeImporter:
     def __init__(self, disallowed_imports):
@@ -34,10 +28,6 @@ class SafeImporter:
             if name.startswith(disallowed):
                 raise ImportError(f"Importing '{name}' is not allowed.")
         return self.original_import(name, *args, **kwargs)
-
-class BlockedQApplication:
-    def __init__(self, *args, **kwargs):
-        raise ImportError("Access to QApplication is not allowed.")
 
 class PluginManager:
     def __init__(self, plugin_directory: str, w):
@@ -60,58 +50,54 @@ class PluginManager:
     def loadPlugins(self):
         try:
             sys.path.insert(0, self.plugin_directory)
-            for plugDir in os.listdir(self.plugin_directory):
+            for plugDir in VtAPI.Path(self.plugin_directory).dir():
                 if self.__windowApi.Path(VtAPI.Path.joinPath(self.plugin_directory, plugDir)).isDir():
-                    self.fullPath = os.path.join(self.plugin_directory, plugDir)
+                    self.fullPath = VtAPI.Path.joinPath(self.plugin_directory, plugDir)
                     self.plugins[plugDir] = self.fullPath
-
-            if self.plugins.get("Basic"):
+            # self.__windowApi.activeWindow.setLogMsg(f"Modules {self.__windowApi.activeWindow.appName()} loading...")
+            bP = self.plugins.get("Basic")
+            if not bP:
+                if self.__windowApi.activeWindow.getCommand("LoadBasicCommand"):
+                    self.__windowApi.activeWindow.runCommand({"command": "LoadBasicCommand", "kwargs": {"url": "https://github.com/cherry220-v/Basic"}})
+            else:
                 self.loadPlugin("Basic")
                 self.plugins.pop("Basic")
-            else:
-                self.__windowApi.activeWindow.runCommand({"command": "LoadBasicCommand", "kwargs": {"url": "https://github.com/cherry220-v/Basic"}})
             for pl in self.plugins:
                 self.loadPlugin(pl)
         except Exception as e:
-            print(e, self.__windowApi.Color.ERROR)
+            self.__windowApi.activeWindow.setLogMsg(e, self.__windowApi.Color.ERROR)
         finally:
-            os.chdir(self.dPath)
+            VtAPI.Path.chdir(self.dPath)
 
     def loadPlugin(self, name):
         fullPath = self.plugins.get(name)
-        os.chdir(fullPath)
-        if os.path.isdir(fullPath) and os.path.isfile(f"config.vt-conf"):
-            self.initPlugin(os.path.join(fullPath, "config.vt-conf"))
+        VtAPI.Path.chdir(fullPath)
+        if VtAPI.Path(fullPath).isDir() and VtAPI.Path(f"config.vt-conf").isFile():
+            self.initPlugin(VtAPI.Path.joinPath(fullPath, "config.vt-conf"))
             if self.mainFile:
                 pyFile = self.mainFile
                 try:
                     with SafeImporter(BLOCKED):
-                        # sys.modules['PyQt6.QtWidgets'].QApplication = BlockedQApplication
-                        # sys.modules['PyQt6.QtCore'].QCoreApplication = BlockedQApplication
-                        # sys.modules['PyQt6.QtGui'].QGuiApplication = BlockedQApplication
                         sys.path.insert(0, fullPath)
                         self.module = self.importModule(pyFile, self.name + "Plugin")
                         if hasattr(self.module, "initAPI"):
                             self.module.initAPI(self.__windowApi)
-                        # sys.modules['PyQt6.QtWidgets'].QApplication = oldQApp
-                        # sys.modules['PyQt6.QtGui'].QGuiApplication = oldGuiApp
-                        # sys.modules['PyQt6.QtCore'].QCoreApplication = oldCoreApp
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.Color.INFO)
                 except Exception as e:
-                    print(self.name, e)
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load plugin '{}' commands: {}").format(self.name, e), self.__windowApi.Color.ERROR)
                     self.module = None
                 finally:
                     sys.path.pop(0)
             if self.menuFile:
                 self.loadMenu(self.menuFile, module=self.module, path=fullPath)
-            os.chdir(self.__windowApi.getFolder("packages"))
+            VtAPI.Path.chdir(self.__windowApi.getFolder("packages"))
+            return self.module
 
     def loadMenu(self, f, module=None, path=None):
         try:
-            menuFile = json.load(open(f, "r+"))
-            localeDir = os.path.join(path if path else "", "locale")
-            if os.path.isdir(localeDir):
+            menuFile = VtAPI.Settings().fromFile(VtAPI.File(f)).data()
+            localeDir = VtAPI.Path.joinPath(path if path else "", "locale")
+            if VtAPI.Path(localeDir).isDir():
                 self.__window.addTranslation(localeDir)
             for menu in menuFile:
                 if menu == "menuBar" or menu == "mainMenu":
@@ -123,9 +109,8 @@ class PluginManager:
         except Exception as e:
             self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load menu from '{}': {}").format(f, e))
 
-
     def initPlugin(self, path):
-        config = json.load(open(path, "r+"))
+        config = VtAPI.Settings().fromFile(VtAPI.File(path)).data()
 
         self.name = config.get('name', 'Unknown')
         self.version = config.get('version', '1.0')
@@ -198,12 +183,15 @@ class PluginManager:
                                 action.setChecked(not value)
                 cl = c.get("command")
                 if issubclass(cl, VtAPI.Plugin.TextCommand):
-                    c = cl(self.__windowApi, self.__windowApi.activeWindow.activeView)
+                    cnd = cl(self.__windowApi, self.__windowApi.activeWindow.activeView)
                 elif issubclass(cl, VtAPI.Plugin.WindowCommand):
-                    c = cl(self.__windowApi, self.__windowApi.activeWindow)
+                    cnd = cl(self.__windowApi, self.__windowApi.activeWindow)
                 elif issubclass(cl, VtAPI.Plugin.ApplicationCommand):
-                    c = cl(self.__windowApi)
-                out = c.run(*args or [], **kwargs or {})
+                    cnd = cl(self.__windowApi)
+                else:
+                    cnd = VtAPI.Plugin.ApplicationCommand(self.__windowApi)
+                    cnd.run = lambda: self.__windowApi.activeWindow.setLogMsg("ERROR", self.__windowApi.Color.ERROR)
+                out = cnd.run(*args or [], **kwargs or {})
                 self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Executed command '{}'").format(command), self.__windowApi.Color.INFO)
                 if out:
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' returned '{}'").format(command, out), self.__windowApi.Color.ERROR)

@@ -24,7 +24,7 @@
    <item>
     <widget class="QScrollArea" name="scrollArea">
      <property name="verticalScrollBarPolicy">
-      <enum>Qt::ScrollBarAlwaysOn</enum>
+      <enum>Qt::ScrollBarPolicy::ScrollBarAlwaysOn</enum>
      </property>
      <property name="widgetResizable">
       <bool>true</bool>
@@ -34,8 +34,8 @@
        <rect>
         <x>0</x>
         <y>0</y>
-        <width>334</width>
-        <height>536</height>
+        <width>338</width>
+        <height>572</height>
        </rect>
       </property>
       <layout class="QVBoxLayout" name="verticalLayout_2">

@@ -609,7 +609,7 @@ class TabWidget (QtWidgets.QTabWidget):
                     tab.deleteLater()
                     self.removeTab(currentIndex)
                 elif result == QtWidgets.QMessageBox.StandardButton.No:
-                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
+                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(  self.MainWindow.api.activeWindow.activeView)
                     self.MainWindow.api.activeWindow.delView(self.MainWindow.api.activeWindow.activeView)
                     tab.deleteLater()
                     self.removeTab(currentIndex)
