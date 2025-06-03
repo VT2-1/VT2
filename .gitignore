@@ -2,10 +2,10 @@ build
 dist
 __pycache__
 Output
-test.py
 API2Compile/build
 API2Compile/api.c
 API2Compile/api.h
 API2Compile/api2py.py
 .vscode
 .pytest_cache
+test.py

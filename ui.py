@@ -1,5 +1,4 @@
 from PySide6 import QtCore, QtWidgets
-from concurrent.futures import ThreadPoolExecutor
 import sys, uuid
 
 from addit import *
@@ -7,30 +6,6 @@ from api2 import PluginManager
 from api import VtAPI
 
 import sys
-import inspect
-
-def trace_calls(frame, event, arg):
-    if event != 'call':
-        return
-
-    code = frame.f_code
-    func_name = code.co_name
-    func_filename = code.co_filename
-    func_lineno = frame.f_lineno
-    args, _, _, values = inspect.getargvalues(frame)
-    if func_name not in ["eventFilter", "paintEvent", "updateLog", "print"] and not func_name.startswith("__") and not func_name.startswith("_") and not func_name.startswith("<") and not func_name.startswith("feauture") and not func_name.startswith("get"):
-        try:
-            arg_str = ', '.join(f'{a}={values[a]!r}' for a in args)
-            print(f'[CALL] {func_name}({arg_str}) at {func_filename}:{func_lineno}')
-        except:
-            pass
-    
-    def trace_returns(frame, event, arg):
-        if event == 'return' and func_name not in ["eventFilter", "paintEvent", "updateLog", "print"] and not func_name.startswith("__") and not func_name.startswith("_") and not func_name.startswith("<") and not func_name.startswith("feauture")  and not func_name.startswith("get"):
-            print(f'[RETURN] {func_name} -> {arg!r}')
-        return trace_returns
-
-    return trace_returns
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow, argv=[], api=None):
@@ -44,7 +19,7 @@ class Ui_MainWindow(object):
         self.settings()
 
         self.MainWindow.setObjectName("MainWindow")
-        self.MainWindow.resize(800, 600)
+        self.MainWindow.resize(1000, 700)
 
         self.translator = QtCore.QTranslator()
 
@@ -224,7 +199,6 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if restoreState: self.api.activeWindow.signals.windowStateRestoring.emit()
         self.processArgv()
         self.show()
-        # sys.settrace(trace_calls) # не использовать вместе с stdoutLog; отладочные выводы
 
         # self.statusbar.startAnimation()
         # self.statusbar.showStatusMessage("Hello")

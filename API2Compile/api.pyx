@@ -113,7 +113,7 @@ cdef class Settings:
     def __cinit__(self, settings=None):
         self.settings = settings or {}
     
-    cpdef dict data(self):
+    cpdef data(self):
         return self.settings
 
     cpdef get(self, str key, str default=None):
@@ -846,6 +846,11 @@ cdef class Window:
              self.setTitle(os.path.normpath(self.activeView.getFile() or 'Untitled'))
              return True
         return False
+
+    cpdef void resizeDock(self, object dock, int w, h=None):
+        self.__mw.resizeDocks([dock], [w], QtCore.Qt.Horizontal)
+        if h:
+            self.__mw.resizeDocks([dock], [h], QtCore.Qt.Vertical)
 
     cpdef void registerCommandClass(self, dict data):
         if hasattr(self.__mw, "pl"):
