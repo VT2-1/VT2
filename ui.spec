@@ -33,7 +33,8 @@ a = Analysis(
         'pydoc',
         'filecmp',
         'traceback',
-        'heapq'
+        'heapq',
+        'enum'
         ],
     hookspath=[],
     hooksconfig={},

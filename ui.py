@@ -1,11 +1,10 @@
 from PySide6 import QtCore, QtWidgets
-import sys, uuid
 
 from addit import *
 from api2 import PluginManager
 from api import VtAPI
 
-import sys
+import sys, uuid
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow, argv=[], api=None):
@@ -82,7 +81,7 @@ class Ui_MainWindow(object):
         except Exception as e:
             print(e)
             self.settData = {}
-            self.api.activeWindow.setLogMsg(self.translate("Error reading settings. Check /ui/Main.settings file", self.api.ERROR))
+            self.api.activeWindow.setLogMsg(self.translate("Error reading settings. Check /ui/Main.settings file", self.api.Color.ERROR))
         tempD = self.settData.get("packageDirs") or "./Packages/"
         if type(tempD) == dict and tempD:
             self.api.setFolder("packages", self.api.replacePaths(tempD.get(self.api.platform())))
@@ -150,7 +149,6 @@ class DownloadThread(VtAPI.Widgets.Thread):
             if not self.api.Path(self.api.getFolder("packages")).exists(): self.api.Path(self.api.getFolder("packages")).create()
 
             self.shutil.move(extracted_dir, finalPackageDir)
-            self.api.Dialogs.infoMessage("Basic loaded. Reload app")
         except Exception as e:
             self.api.activeWindow.setLogMsg(self.window.translate("Error when loading plugin from '{}'".format(url)), self.api.Color.ERROR)
         finally:
@@ -256,16 +254,3 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         if self.saveState: self.api.activeWindow.signals.windowStateSaving.emit()
         self.api.activeWindow.signals.windowClosed.emit()
         e.accept()
-
-def main():
-    sys.path.insert(0, ".")
-    app = QtWidgets.QApplication(sys.argv)
-    api = VtAPI(app)
-    w = MainWindow(api)
-    sys.exit(app.exec())
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(e)

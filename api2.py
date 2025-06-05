@@ -1,6 +1,7 @@
 from PySide6 import QtWidgets, QtGui
 import os, sys, importlib, inspect, builtins, traceback
 import importlib.util
+from functools import partial
 from api import VtAPI
 
 BLOCKED = [ # не позволяет добавить импорт сторонней версии PyQt|PySide. Защищает от вылета
@@ -70,6 +71,7 @@ class PluginManager:
             VtAPI.Path.chdir(self.dPath)
 
     def loadPlugin(self, name):
+        self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loading plugin '{}'").format(name))
         fullPath = self.plugins.get(name)
         VtAPI.Path.chdir(fullPath)
         if VtAPI.Path(fullPath).isDir() and VtAPI.Path(f"config.vt-conf").isFile():
@@ -82,7 +84,7 @@ class PluginManager:
                         self.module = self.importModule(pyFile, self.name + "Plugin")
                         if hasattr(self.module, "initAPI"):
                             self.module.initAPI(self.__windowApi)
-                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.Color.INFO)
+                    self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.Color.SUCCESS)
                 except Exception as e:
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load plugin '{}' commands: {}").format(self.name, e), self.__windowApi.Color.ERROR)
                     self.module = None
@@ -161,7 +163,7 @@ class PluginManager:
                         if 'checked' in item:
                             action.setChecked(item['checked'])
                     if regc: self.registerCommand(data)
-                    else: action.triggered.connect(lambda: self.__windowApi.activeWindow.runCommand(item["command"]))
+                    else: action.triggered.connect(partial(self.__windowApi.activeWindow.runCommand, item["command"]))
                 parent.addAction(action)
 
     def executeCommand(self, c, *args, **kwargs):
@@ -224,6 +226,7 @@ class PluginManager:
                 "plugin": pl,
                 "checkedStatePath": chkdStatePath,
             }
+            self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'{}' from '{}' loaded").format(commandN, pl), self.__windowApi.Color.BLUE)
 
     def registerCommand(self, commandInfo):
         command = commandInfo.get("command")
@@ -257,6 +260,7 @@ class PluginManager:
                     "plugin": pl,
                     "checkedStatePath": chkdStatePath,
                 }
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'{}' from '{}' loaded").format(commandN, pl), self.__windowApi.Color.BLUE)
             except (ImportError, AttributeError, TypeError) as e:
                 self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Error when registering '{}' from '{}': {}").format(commandN, pl, e))
 
@@ -274,8 +278,8 @@ class PluginManager:
                     "plugin": None,
                     "checkedStatePath": chkdStatePath,
                 }
+                self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("'{}' from '{}' loaded").format(commandN, pl), self.__windowApi.Color.BLUE)
             else:
-                print(commandN)
                 self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' not found").format(commandN))
 
     def findAction(self, parent_menu, caption=None, command=None):

@@ -322,7 +322,6 @@ class LineNumberArea(QtWidgets.QWidget):
     def paintEvent(self, event):
         """Paint line numbers."""
         painter = QtGui.QPainter(self)
-        painter.fillRect(event.rect(), QtGui.QColor(240, 240, 240))
 
         block = self.text_edit.document().begin()
         block_number = block.blockNumber()
@@ -931,20 +930,6 @@ class TagDB:
         while query.next():
             files.append(query.value(0))
         return files
-
-class TreeWidget(QtWidgets.QTreeView):
-    def __init__(self, parent, w):
-        super().__init__(parent)
-        self.w = w
-        self.doubleClicked.connect(self.doubleClick)
-        self.clicked.connect(self.click)
-        self.activated.connect(self.Activated)
-    def doubleClick(self, index):
-        self.w.w.signals.treeWidgetDoubleClicked.emit(index)
-    def click(self, index):
-        self.w.w.signals.treeWidgetClicked.emit(index)
-    def Activated(self):
-        self.w.w.signals.treeWidgetActivated.emit()
 
 class StatusBar(QtWidgets.QStatusBar):
     def __init__(self, parent=None):

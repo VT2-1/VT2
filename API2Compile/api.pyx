@@ -872,9 +872,8 @@ cdef class Window:
         return self.__mw.themeFile
 
     cpdef void setTheme(self, str theme):
-        cdef str themePath = os.path.join(self.api.themesDir, theme)
-        if os.path.isfile(themePath):
-             self.__mw.setStyleSheet(open(themePath, "r+").read())
+        if os.path.isfile(theme):
+             self.__mw.setStyleSheet(open(theme, "r+").read())
              self.__mw.themeFile = theme
 
     cpdef str getLocale(self):
