@@ -4,7 +4,7 @@ from PyInstaller.utils.hooks import collect_data_files
 qt6_data = collect_data_files('PySide6', subdir=None, include_py_files=True)
 
 a = Analysis(
-    ['ui.py'],
+    ['main.py'],
     pathex=[],
     binaries=[],
     datas=qt6_data,

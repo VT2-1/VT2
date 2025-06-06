@@ -198,7 +198,7 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self.processArgv()
         self.show()
 
-        # self.statusbar.startAnimation()
+        self.statusbar.startAnimation()
         # self.statusbar.showStatusMessage("Hello")
         self.w.signals.windowStarted.emit()
 

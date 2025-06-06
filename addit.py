@@ -630,7 +630,6 @@ class Tag(QtWidgets.QWidget):
 
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(5, 0, 5, 0)
-        self.setStyleSheet("background-color: lightgrey; border-radius: 10px;")
 
         self.label = QtWidgets.QLabel(f"#{text}")
         self.label.setObjectName("tagLabel")

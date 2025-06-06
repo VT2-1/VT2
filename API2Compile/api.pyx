@@ -117,17 +117,25 @@ cdef class Settings:
         return self.settings
 
     cpdef get(self, str key, str default=None):
-        return self.settings.get(key, default)
+        if type(self.settings) == dict:
+            return self.settings.get(key, default)
     
-    cpdef set(self, str key, str value):
-        self.settings[key] = value
+    cpdef set(self, str key, value):
+        if type(self.settings) == dict:
+            self.settings[key] = value
     
     cpdef erase(self, str key):
-        if key in self.settings:
-            del self.settings[key]
+        if type(self.settings) == dict:
+            if key in self.settings:
+                del self.settings[key]
     
     cpdef has(self, key):
         return key in self.settings
+
+    cpdef write(self, file: "VtAPI.File" | str):
+        if type(file) == str:
+            file = VtAPI.File(file)
+        file.write(json.dumps(self.settings))
     
     @classmethod
     def fromFile(cls, f: "VtAPI.File"):
