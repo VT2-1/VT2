@@ -1,7 +1,7 @@
 {
     "appName": "VT2",
     "apiVersion": 1.0,
-    "packageDirs": {
+    "packageDirss": {
         "Windows": "%USERPROFILE%/Documents/VT2",
         "Linux": "%HOME%/.local/share/VT2",
         "OSX": "%HOME%/Library/Application Support/VT2"

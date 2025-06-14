@@ -4,7 +4,7 @@ from addit import *
 from api2 import PluginManager
 from api import VtAPI
 
-import sys, uuid
+import sys, uuid, os
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow, argv=[], api=None):
@@ -45,6 +45,7 @@ class Ui_MainWindow(object):
         self.statusbar.setAnimationList(["▁", "▂", "▅", "▆", "▇"])
         self.MainWindow.setStatusBar(self.statusbar)
         self.tagBasePath = self.api.Path.joinPath(self.api.getFolder("packages"), ".ft")
+        print(self.tagBasePath)
         self.tagBase = TagDB(self.tagBasePath)
         self.logger = self.MainWindow.logger
         self.MainWindow.logStdout = self.settData.get("logStdout")
@@ -82,17 +83,19 @@ class Ui_MainWindow(object):
             print(e)
             self.settData = {}
             self.api.activeWindow.setLogMsg(self.translate("Error reading settings. Check /ui/Main.settings file", self.api.Color.ERROR))
-        tempD = self.settData.get("packageDirs") or "./Packages/"
+        tempD = self.settData.get("packageDirs")
         if type(tempD) == dict and tempD:
             self.api.setFolder("packages", self.api.replacePaths(tempD.get(self.api.platform())))
-            self.api.setFolder("themes", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Themes")))
-            self.api.setFolder("plugins", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Plugins")))
-            self.api.setFolder("ui", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Ui")))
-            self.api.setFolder("cache", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "cache")))
-            for d in [self.api.getFolder("packages"), self.api.getFolder("themes"), self.api.getFolder("plugins"), self.api.getFolder("ui"), self.api.getFolder("cache")]:
-                if not self.api.Path(d).isDir(): self.api.Path(d).create()
-            self.api.Path.chdir(self.api.getFolder("packages"))
-            self.dirsLoaded = True
+        else:
+            self.api.setFolder("packages", os.path.join(os.getcwd(), "Packages"))
+        self.api.setFolder("themes", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Themes")))
+        self.api.setFolder("plugins", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Plugins")))
+        self.api.setFolder("ui", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "Ui")))
+        self.api.setFolder("cache", self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), "cache")))
+        for d in [self.api.getFolder("packages"), self.api.getFolder("themes"), self.api.getFolder("plugins"), self.api.getFolder("ui"), self.api.getFolder("cache")]:
+            if not self.api.Path(d).isDir(): self.api.Path(d).create()
+        self.api.Path.chdir(self.api.getFolder("packages"))
+        self.dirsLoaded = True
         self.api.setAppName(self.settData.get("appName") or "VT2")
         # self.api.__version__ = self.settData.get("apiVersion") or "1.0"
         self.MainWindow.logStdout = self.settData.get("logStdout") or False

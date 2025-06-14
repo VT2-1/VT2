@@ -38,7 +38,8 @@ class Logger:
                     if self._file: self._file.write("\n"+message)
                     self.__window.api.activeWindow.signals.logWrited.emit(message)
             except: pass
-            self._stdout_backup.write(message)
+            if self._stdout_backup:
+                self._stdout_backup.write(message)
 
     def flush(self):
         pass
