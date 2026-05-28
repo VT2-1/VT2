@@ -104,3 +104,50 @@ def test_add_and_remove_tags(main_window):
     assert test_tag in main_window.api.activeWindow.activeView.getTags(test_file)
     main_window.api.activeWindow.activeView.removeTag(test_file, test_tag)
     assert test_tag not in main_window.api.activeWindow.activeView.getTags(test_file)
+
+
+
+def test_sandbox_blocks_file_write_and_subprocess_import():
+    import json
+    import os
+    from multiprocessing import Pipe, Process
+
+    from plugin_sandbox import run_child
+
+    parent, child = Pipe()
+    manifest = {
+        "name": "SafeDemo",
+        "commands": ["safe_demo", "try_harm_device"],
+        "timeoutMs": 3000,
+        "memoryMb": 64,
+        "cpuSeconds": 2,
+    }
+    plugin_path = os.path.abspath("demo_plugins/SafeDemo/plugin.py")
+    process = Process(
+        target=run_child,
+        args=(child, plugin_path, json.dumps(manifest), 64, 2),
+        daemon=True,
+    )
+    process.start()
+    child.close()
+
+    while True:
+        assert parent.poll(2), "sandbox plugin did not become ready"
+        message = parent.recv()
+        if message.get("type") == "ready":
+            break
+
+    parent.send({"type": "run", "id": "test", "command": "try_harm_device", "args": [], "kwargs": {}})
+    while True:
+        assert parent.poll(2), "sandbox command did not return"
+        message = parent.recv()
+        if message.get("type") == "result":
+            assert message["ok"] is True
+            assert "file write blocked: SandboxViolation" in message["result"]
+            assert "subprocess import blocked: SandboxViolation" in message["result"]
+            break
+
+    parent.send({"type": "shutdown"})
+    process.join(1)
+    if process.is_alive():
+        process.kill()

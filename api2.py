@@ -1,6 +1,7 @@
 from PySide6 import QtWidgets, QtGui
-import os, sys, importlib, inspect, builtins, traceback
+import os, sys, importlib, inspect, builtins, traceback, json, uuid
 import importlib.util
+from multiprocessing import Pipe, Process
 from functools import partial
 from api import VtAPI
 
@@ -30,6 +31,103 @@ class SafeImporter:
                 raise ImportError(f"Importing '{name}' is not allowed.")
         return self.original_import(name, *args, **kwargs)
 
+
+class SandboxedPluginProcess:
+    def __init__(self, manifest, plugin_file, window_api):
+        self.manifest = manifest
+        self.plugin_file = plugin_file
+        self.window_api = window_api
+        self.name = manifest.get("name", "Unknown")
+        self.commands = set(manifest.get("commands", []))
+        self.timeout_ms = int(manifest.get("timeoutMs", 3000))
+        self.parent_conn, child_conn = Pipe()
+        from plugin_sandbox import run_child
+        self.process = Process(
+            target=run_child,
+            args=(
+                child_conn,
+                plugin_file,
+                json.dumps(manifest),
+                int(manifest.get("memoryMb", 64)),
+                int(manifest.get("cpuSeconds", 2)),
+            ),
+            daemon=True,
+        )
+        self.process.start()
+        child_conn.close()
+        self._request_id = 0
+
+    def __str__(self):
+        return f"sandbox:{self.name}"
+
+    def start(self):
+        self._drain_until_ready()
+        return self
+
+    def _drain_until_ready(self):
+        while self.parent_conn.poll(self.timeout_ms / 1000):
+            msg = self.parent_conn.recv()
+            if self._handle_event(msg):
+                continue
+            if msg.get("type") == "ready":
+                return
+            if msg.get("type") == "error":
+                raise RuntimeError(msg.get("message"))
+        raise TimeoutError(f"Sandboxed plugin '{self.name}' did not become ready")
+
+    def _handle_event(self, msg):
+        if not isinstance(msg, dict) or msg.get("type") != "event":
+            return False
+        event = msg.get("event")
+        payload = msg.get("payload") or {}
+        if event == "log":
+            level = str(payload.get("level", "INFO")).upper()
+            color = getattr(VtAPI.Color, level, VtAPI.Color.INFO)
+            self.window_api.activeWindow.setLogMsg(f"[{self.name}] {payload.get('message', '')}", color)
+        elif event == "status_message":
+            self.window_api.activeWindow.statusMessage(str(payload.get("message", "")), int(payload.get("timeout", 0)))
+        elif event == "register_command":
+            command_name = str(payload.get("name"))
+            if command_name:
+                self.commands.add(command_name)
+        return True
+
+    def run_command(self, command, args=None, kwargs=None):
+        if command not in self.commands:
+            raise ValueError(f"Command '{command}' is not declared by sandboxed plugin '{self.name}'")
+        self._request_id += 1
+        request_id = str(uuid.uuid4())
+        self.parent_conn.send({
+            "type": "run",
+            "id": request_id,
+            "command": command,
+            "args": args or [],
+            "kwargs": kwargs or {},
+        })
+        while self.parent_conn.poll(self.timeout_ms / 1000):
+            msg = self.parent_conn.recv()
+            if self._handle_event(msg):
+                continue
+            if msg.get("type") == "result" and msg.get("id") == request_id:
+                if msg.get("ok"):
+                    return msg.get("result")
+                raise RuntimeError(msg.get("error"))
+            if msg.get("type") == "error":
+                raise RuntimeError(msg.get("message"))
+        self.stop(force=True)
+        raise TimeoutError(f"Sandboxed command '{command}' timed out")
+
+    def stop(self, force=False):
+        try:
+            if self.process.is_alive() and not force:
+                self.parent_conn.send({"type": "shutdown"})
+                self.process.join(timeout=1)
+        except Exception:
+            force = True
+        if force and self.process.is_alive():
+            self.process.kill()
+        self.parent_conn.close()
+
 class PluginManager:
     def __init__(self, plugin_directory: str, w):
         self.plugin_directory = plugin_directory
@@ -39,6 +137,7 @@ class PluginManager:
         self.__menu_map = {}
         self.shortcuts = []
         self.regCommands = {}
+        self.sandboxedPlugins = {}
         self.dPath = os.getcwd()
 
     def importModule(self, path, n):
@@ -86,18 +185,34 @@ class PluginManager:
             self.initPlugin(VtAPI.Path.joinPath(fullPath, "config.vt-conf"))
             if self.mainFile:
                 pyFile = self.mainFile
+                plugin_file = VtAPI.Path.joinPath(fullPath, pyFile)
                 try:
-                    with SafeImporter(BLOCKED):
-                        sys.path.insert(0, fullPath)
-                        self.module = self.importModule(VtAPI.Path.joinPath(fullPath, pyFile), self.name + "Plugin")
-                        if hasattr(self.module, "initAPI"):
-                            self.module.initAPI(self.__windowApi)
+                    if self.sandbox:
+                        manifest = {
+                            "name": self.name,
+                            "version": self.version,
+                            "commands": self.commands,
+                            "timeoutMs": self.timeoutMs,
+                            "memoryMb": self.memoryMb,
+                            "cpuSeconds": self.cpuSeconds,
+                        }
+                        self.module = SandboxedPluginProcess(manifest, plugin_file, self.__windowApi).start()
+                        self.sandboxedPlugins[self.name] = self.module
+                        for command_name in self.module.commands:
+                            self.registerCommand({"command": command_name, "plugin": self.module})
+                    else:
+                        with SafeImporter(BLOCKED):
+                            sys.path.insert(0, fullPath)
+                            self.module = self.importModule(plugin_file, self.name + "Plugin")
+                            if hasattr(self.module, "initAPI"):
+                                self.module.initAPI(self.__windowApi)
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.Color.SUCCESS)
                 except Exception as e:
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Failed load plugin '{}' commands: {}").format(self.name, e), self.__windowApi.Color.ERROR)
                     self.module = None
                 finally:
-                    sys.path.pop(0)
+                    if not self.sandbox and sys.path and sys.path[0] == fullPath:
+                        sys.path.pop(0)
             if self.menuFile:
                 self.loadMenu(self.menuFile, module=self.module, path=fullPath)
             VtAPI.Path.chdir(self.__windowApi.getFolder("packages"))
@@ -126,6 +241,11 @@ class PluginManager:
         self.version = config.get('version', '1.0')
         self.mainFile = config.get('main', '')
         self.menuFile = config.get('menu', '')
+        self.sandbox = config.get('sandbox', False)
+        self.commands = config.get('commands', [])
+        self.timeoutMs = config.get('timeoutMs', 3000)
+        self.memoryMb = config.get('memoryMb', 64)
+        self.cpuSeconds = config.get('cpuSeconds', 2)
 
     def parseMenu(self, data, parent, pl=None, localemenu="MainMenu", regc=True):
         if isinstance(data, dict):
@@ -262,7 +382,7 @@ class PluginManager:
 
         if pl:
             try:
-                command_func = getattr(pl, commandN)
+                command_func = (lambda *a, _pl=pl, _command=commandN, **kw: _pl.run_command(_command, list(a), kw)) if isinstance(pl, SandboxedPluginProcess) else getattr(pl, commandN)
                 self.regCommands[commandN] = {
                     "action": action,
                     "command": command_func,

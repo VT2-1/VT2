@@ -1,0 +1,11 @@
+{
+  "name": "SafeDemo",
+  "version": "1.0",
+  "main": "plugin.py",
+  "menu": "menu.vt-menu",
+  "sandbox": true,
+  "commands": ["safe_demo", "try_harm_device"],
+  "timeoutMs": 3000,
+  "memoryMb": 64,
+  "cpuSeconds": 2
+}

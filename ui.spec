@@ -34,7 +34,9 @@ a = Analysis(
         'filecmp',
         'traceback',
         'heapq',
-        'enum'
+        'enum',
+        'plugin_sandbox',
+        'multiprocessing'
         ],
     hookspath=[],
     hooksconfig={},
