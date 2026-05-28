@@ -4,7 +4,7 @@ from addit import *
 from api2 import PluginManager
 from api import VtAPI
 
-import sys, uuid, os
+import sys, uuid, os, hashlib
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow, argv=[], api=None):
@@ -45,7 +45,6 @@ class Ui_MainWindow(object):
         self.statusbar.setAnimationList(["▁", "▂", "▅", "▆", "▇"])
         self.MainWindow.setStatusBar(self.statusbar)
         self.tagBasePath = self.api.Path.joinPath(self.api.getFolder("packages"), ".ft")
-        print(self.tagBasePath)
         self.tagBase = TagDB(self.tagBasePath)
         self.logger = self.MainWindow.logger
         self.MainWindow.logStdout = self.settData.get("logStdout")
@@ -80,9 +79,8 @@ class Ui_MainWindow(object):
             else:
                 raise FileNotFoundError("File doesn't exists")
         except Exception as e:
-            print(e)
             self.settData = {}
-            self.api.activeWindow.setLogMsg(self.translate("Error reading settings. Check /ui/Main.settings file", self.api.Color.ERROR))
+            self.api.activeWindow.setLogMsg(self.translate("Console", "Error reading settings. Check /ui/Main.settings file"), self.api.Color.ERROR)
         tempD = self.settData.get("packageDirs")
         if type(tempD) == dict and tempD:
             self.api.setFolder("packages", self.api.replacePaths(tempD.get(self.api.platform())))
@@ -99,7 +97,7 @@ class Ui_MainWindow(object):
         self.api.setAppName(self.settData.get("appName") or "VT2")
         # self.api.__version__ = self.settData.get("apiVersion") or "1.0"
         self.MainWindow.logStdout = self.settData.get("logStdout") or False
-        self.saveState = self.settData.get("saveState") or True
+        self.saveState = self.settData.get("saveState", True)
         self.MainWindow.remindOnClose = self.settData.get("remindOnClose")
         self.themeFile = ""
         if self.settData.get("menu"): self.menuFile = self.api.replacePaths(self.api.Path.joinPath(self.api.getFolder("packages"), self.settData.get("menu")))
@@ -118,30 +116,52 @@ class LoadBasicCommand(VtAPI.Plugin.WindowCommand):
         super().__init__(api, window)
         self.api: VtAPI
     def run(self, url):
-        thread = DownloadThread(self.api, self.window)
+        thread = DownloadThread(self.api, self.window, url)
+        thread.finished.connect(thread.deleteLater)
         thread.start()
-        thread.wait()
 
 class DownloadThread(VtAPI.Widgets.Thread):
-    def __init__(self, api, window):
+    def __init__(self, api, window, url):
         super().__init__()
         self.api: VtAPI = api
         self.window: VtAPI.Window = window
+        self.url = url.rstrip("/")
         self.requests = self.api.importModule("urllib.request")
         self.zipfile = self.api.importModule("zipfile")
         self.shutil = self.api.importModule("shutil")
+    def _safe_extract(self, archive, destination):
+        destination_abs = os.path.abspath(destination)
+        for member in archive.infolist():
+            target = os.path.abspath(os.path.join(destination_abs, member.filename))
+            if not target.startswith(destination_abs + os.sep):
+                raise ValueError(f"Unsafe archive path: {member.filename}")
+        archive.extractall(destination_abs)
+
     def run(self):
-        url = "https://github.com/VT2-1/Basic"
-        self.api.activeWindow.setLogMsg(self.api.activeWindow.translate("Plugin 'Basic' not found. Trying to install last version from '{}'".format(url)), self.api.Color.WARNING)
+        url = self.url or "https://github.com/VT2-1/Basic"
+        self.api.activeWindow.setLogMsg(self.api.activeWindow.translate("Plugin 'Basic' not found. Trying to install trusted version from '{}'".format(url)), self.api.Color.WARNING)
         tempdirName = "vt-basic-install"
+        path = None
         try:
-            path = self.api.Path.joinPath(self.api.replacePaths("%TEMP%") or self.api.Path(__file__).dirName(), tempdirName)
+            temp_root = self.api.replacePaths("%TEMP%")
+            if temp_root.startswith("%"):
+                temp_root = self.api.Path(__file__).dirName()
+            path = self.api.Path.joinPath(temp_root, tempdirName)
             self.api.Path(path).create()
 
             filePath = self.api.Path.joinPath(path, "package.zip")
-            self.requests.urlretrieve(url + "/zipball/master", filePath)
+            ref = os.environ.get("VT2_BASIC_PLUGIN_REF", "master")
+            self.requests.urlretrieve(url + f"/zipball/{ref}", filePath)
+            expected_sha256 = os.environ.get("VT2_BASIC_PLUGIN_SHA256")
+            if expected_sha256:
+                h = hashlib.sha256()
+                with open(filePath, "rb") as downloaded:
+                    for chunk in iter(lambda: downloaded.read(1024 * 1024), b""):
+                        h.update(chunk)
+                if h.hexdigest().lower() != expected_sha256.lower():
+                    raise ValueError("Downloaded plugin checksum mismatch")
             with self.zipfile.ZipFile(filePath, 'r') as f:
-                f.extractall(path)
+                self._safe_extract(f, path)
             self.api.Path(filePath).remove()
 
             extracted_dir = next(
@@ -149,14 +169,16 @@ class DownloadThread(VtAPI.Widgets.Thread):
                 if self.api.Path(self.api.Path.joinPath(path, d)).isDir()
             )
             finalPackageDir = self.api.Path.joinPath(self.api.getFolder("packages"), "Plugins", url.split("/")[-1])
-            if not self.api.Path(self.api.getFolder("packages")).exists(): self.api.Path(self.api.getFolder("packages")).create()
-
+            self.api.Path(self.api.Path.joinPath(self.api.getFolder("packages"), "Plugins")).create()
+            if self.api.Path(finalPackageDir).exists():
+                self.shutil.rmtree(finalPackageDir)
             self.shutil.move(extracted_dir, finalPackageDir)
+            self.window.setLogMsg(self.window.translate("'Basic' plugin successfully installed. Reboot the app"), self.api.Color.INFO)
         except Exception as e:
-            self.api.activeWindow.setLogMsg(self.window.translate("Error when loading plugin from '{}'".format(url)), self.api.Color.ERROR)
+            self.api.activeWindow.setLogMsg(self.window.translate("Error when loading plugin from '{}': {}".format(url, e)), self.api.Color.ERROR)
         finally:
-            self.shutil.rmtree(path)
-            self.window.setLogMsg(self.window.translate("'Basic' plugin succesfully installed. Reboot the app"), self.api.Color.INFO)
+            if path and os.path.isdir(path):
+                self.shutil.rmtree(path, ignore_errors=True)
 
 class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
     def __init__(self, api=None, restoreState=True):
