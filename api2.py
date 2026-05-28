@@ -51,7 +51,12 @@ class PluginManager:
     def loadPlugins(self):
         try:
             sys.path.insert(0, self.plugin_directory)
-            for plugDir in VtAPI.Path(self.plugin_directory).dir():
+            try:
+                plugin_dirs = VtAPI.Path(self.plugin_directory).dir()
+            finally:
+                if sys.path and sys.path[0] == self.plugin_directory:
+                    sys.path.pop(0)
+            for plugDir in plugin_dirs:
                 if self.__windowApi.Path(VtAPI.Path.joinPath(self.plugin_directory, plugDir)).isDir():
                     self.fullPath = VtAPI.Path.joinPath(self.plugin_directory, plugDir)
                     self.plugins[plugDir] = self.fullPath
@@ -73,6 +78,9 @@ class PluginManager:
     def loadPlugin(self, name):
         self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loading plugin '{}'").format(name))
         fullPath = self.plugins.get(name)
+        self.module = None
+        if not fullPath:
+            return None
         VtAPI.Path.chdir(fullPath)
         if VtAPI.Path(fullPath).isDir() and VtAPI.Path(f"config.vt-conf").isFile():
             self.initPlugin(VtAPI.Path.joinPath(fullPath, "config.vt-conf"))
@@ -81,7 +89,7 @@ class PluginManager:
                 try:
                     with SafeImporter(BLOCKED):
                         sys.path.insert(0, fullPath)
-                        self.module = self.importModule(pyFile, self.name + "Plugin")
+                        self.module = self.importModule(VtAPI.Path.joinPath(fullPath, pyFile), self.name + "Plugin")
                         if hasattr(self.module, "initAPI"):
                             self.module.initAPI(self.__windowApi)
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Loaded plugin '{}'").format(self.name), self.__windowApi.Color.SUCCESS)
@@ -147,7 +155,7 @@ class PluginManager:
                             item["shortcut"] = [item['shortcut']]
                         action.setShortcuts(item["shortcut"])
                             # action.setStatusTip(item['shortcut'])
-                        self.shortcuts.append(key for key in item["shortcut"])
+                        self.shortcuts.extend(item["shortcut"])
                         self.__window.addAction(action)
                     else:
                         self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Shortcut '{}' for function '{}' is already used.").format(item['shortcut'], item['command']))
@@ -184,16 +192,19 @@ class PluginManager:
                             else:
                                 action.setChecked(not value)
                 cl = c.get("command")
-                if issubclass(cl, VtAPI.Plugin.TextCommand):
+                if inspect.isclass(cl) and issubclass(cl, VtAPI.Plugin.TextCommand):
                     cnd = cl(self.__windowApi, self.__windowApi.activeWindow.activeView)
-                elif issubclass(cl, VtAPI.Plugin.WindowCommand):
+                    out = cnd.run(*args or [], **kwargs or {})
+                elif inspect.isclass(cl) and issubclass(cl, VtAPI.Plugin.WindowCommand):
                     cnd = cl(self.__windowApi, self.__windowApi.activeWindow)
-                elif issubclass(cl, VtAPI.Plugin.ApplicationCommand):
+                    out = cnd.run(*args or [], **kwargs or {})
+                elif inspect.isclass(cl) and issubclass(cl, VtAPI.Plugin.ApplicationCommand):
                     cnd = cl(self.__windowApi)
+                    out = cnd.run(*args or [], **kwargs or {})
+                elif callable(cl):
+                    out = cl(*args or [], **kwargs or {})
                 else:
-                    cnd = VtAPI.Plugin.ApplicationCommand(self.__windowApi)
-                    cnd.run = lambda: self.__windowApi.activeWindow.setLogMsg("ERROR", self.__windowApi.Color.ERROR)
-                out = cnd.run(*args or [], **kwargs or {})
+                    raise TypeError(f"Unsupported command type: {type(cl)!r}")
                 self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Executed command '{}'").format(command), self.__windowApi.Color.INFO)
                 if out:
                     self.__windowApi.activeWindow.setLogMsg(self.__windowApi.activeWindow.translate("Command '{}' returned '{}'").format(command, out), self.__windowApi.Color.ERROR)
@@ -233,7 +244,7 @@ class PluginManager:
         if type(command) == str:
             commandN = command
         elif inspect.isclass(command):
-            commandN = command
+            commandN = command.__name__
         else:
             commandN = command.get("command")
         pl = commandInfo.get("plugin")

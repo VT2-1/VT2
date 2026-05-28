@@ -14,7 +14,8 @@ class Logger:
         
         self._stdout_backup = sys.stdout
         self._log_stream = io.StringIO()
-        sys.stdout = self
+        if sys.stdout is not self:
+            sys.stdout = self
         self._file = None
 
     def setFile(self, file):
@@ -37,7 +38,9 @@ class Logger:
                     self.__window.api.activeWindow.setLogMsg(f"stdout: {message}")
                     if self._file: self._file.write("\n"+message)
                     self.__window.api.activeWindow.signals.logWrited.emit(message)
-            except: pass
+            except Exception as exc:
+                if self._stdout_backup:
+                    self._stdout_backup.write(f"Logger error: {exc}\n")
             if self._stdout_backup:
                 self._stdout_backup.write(message)
 
@@ -59,6 +62,7 @@ class MiniMap(QtWidgets.QTextEdit):
         self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
         self._isDragging = False
+        self.textEdit = None
 
     def setTextEdit(self, text_edit):
         self.textEdit = text_edit
@@ -280,6 +284,7 @@ class StandartCompleter(QCompleter):
 
     def __init__(self, parent: QtWidgets.QTextEdit):
         QCompleter.__init__(self, parent)
+        self.lastSelected = ""
         self.model = QStringListModel(self)
         self.setModel(self.model)
         self.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
@@ -412,7 +417,7 @@ class TextEdit(QtWidgets.QTextEdit):
     def safeSetText(self, text, cursor=None):
         self.change_event = True
         if not cursor:
-            self.setText(text)
+            self.setPlainText(text)
         else:
             cursor.insertText(text)
         self.mw.api.activeWindow.signals.textChanged.emit()
@@ -435,7 +440,6 @@ class TextEdit(QtWidgets.QTextEdit):
             self.completer.setWidget(self)
         QtWidgets.QTextEdit.focusInEvent(self, event)
 
-    @functools.lru_cache
     def textLen(self): return len(self.toPlainText())
 
     def keyPressEvent(self, event: QtGui.QKeyEvent):
@@ -448,9 +452,10 @@ class TextEdit(QtWidgets.QTextEdit):
             else:
                 QtWidgets.QTextEdit.keyPressEvent(self, event)
         else:
+            before_revision = self.document().revision()
             QtWidgets.QTextEdit.keyPressEvent(self, event)
-            self.mw.api.activeWindow.activeView.setSaved(False)
-        self.textLen.cache_clear()
+            if self.document().revision() != before_revision:
+                self.mw.api.activeWindow.activeView.setSaved(False)
         if event.key() == Qt.Key.Key_Tab and self.completer.popup().isVisible():
             self.completer.insertText.emit(self.completer.getSelected())
             self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
@@ -583,6 +588,7 @@ class TabWidget (QtWidgets.QTabWidget):
         if currentIndex >= 0:
             self.setCurrentIndex(currentIndex)
             tab = self.currentWidget()
+            closingView = self.MainWindow.api.View(self.MainWindow.api, self.MainWindow.api.activeWindow, qwclass=tab)
             if not self.isSaved(tab):
                 dlg = QtWidgets.QMessageBox(self)
                 dlg.setWindowTitle("VarTexter2 - Exiting")
@@ -604,20 +610,20 @@ class TabWidget (QtWidgets.QTabWidget):
 
                 if result == QtWidgets.QMessageBox.StandardButton.Yes:
                     self.MainWindow.api.activeWindow.runCommand({"command": "SaveFileCommand", "args": [tab.file]})
-                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
-                    self.MainWindow.api.activeWindow.delView(self.MainWindow.api.activeWindow.activeView)
+                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(closingView)
+                    self.MainWindow.api.activeWindow.delView(closingView)
                     tab.deleteLater()
                     self.removeTab(currentIndex)
                 elif result == QtWidgets.QMessageBox.StandardButton.No:
-                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(  self.MainWindow.api.activeWindow.activeView)
-                    self.MainWindow.api.activeWindow.delView(self.MainWindow.api.activeWindow.activeView)
+                    self.MainWindow.api.activeWindow.signals.tabClosed.emit(closingView)
+                    self.MainWindow.api.activeWindow.delView(closingView)
                     tab.deleteLater()
                     self.removeTab(currentIndex)
                 elif result == QtWidgets.QMessageBox.StandardButton.Cancel:
                     pass
             else:
-                self.MainWindow.api.activeWindow.signals.tabClosed.emit(self.MainWindow.api.activeWindow.activeView)
-                self.MainWindow.api.activeWindow.delView(self.MainWindow.api.activeWindow.activeView)
+                self.MainWindow.api.activeWindow.signals.tabClosed.emit(closingView)
+                self.MainWindow.api.activeWindow.delView(closingView)
                 tab.deleteLater()
                 self.removeTab(currentIndex)
 
@@ -688,11 +694,13 @@ class TagContainer(QtWidgets.QFrame):
 
     def clear(self):
         for i in range(self.tagLayout.count()):
-            widget = self.tagLayout.itemAt(i).widget()
-            if widget.objectName() == "fileTag": widget.deleteLater()
+            item = self.tagLayout.itemAt(i)
+            widget = item.widget() if item else None
+            if widget and widget.objectName() == "fileTag": widget.deleteLater()
 
     def removeTag(self, text, show=False):
-        self.tags.remove(text)
+        if text in self.tags:
+            self.tags.remove(text)
         for i in range(self.tagLayout.count() - 2):
             widget = self.tagLayout.itemAt(i).widget()
             if widget and widget.text == text:
@@ -741,11 +749,14 @@ class TagContainer(QtWidgets.QFrame):
 class TagDB:
     def __init__(self, dbFile: str):
         self.dbFile = dbFile
-        self.db = QSqlDatabase.addDatabase('QSQLITE')
+        self.connectionName = f'tags-{uuid.uuid4()}'
+        self.db = QSqlDatabase.addDatabase('QSQLITE', self.connectionName)
         self.db.setDatabaseName(dbFile)
         if not self.db.open():
             print(f"Ошибка при подключении к базе данных: {self.db.lastError().text()}")
         else:
+            pragma = QSqlQuery(self.db)
+            pragma.exec("PRAGMA foreign_keys = ON")
             self._createTables()
 
     def _createTables(self):
@@ -761,7 +772,7 @@ class TagDB:
         query.prepare("""
         CREATE TABLE IF NOT EXISTS tags (
             id INTEGER PRIMARY KEY,
-            tag TEXT NOT NULL
+            tag TEXT UNIQUE NOT NULL
         )""")
         if not query.exec():
             print(f"Ошибка создания таблицы tags: {query.lastError().text()}")
@@ -770,8 +781,8 @@ class TagDB:
         CREATE TABLE IF NOT EXISTS file_tags (
             file_id INTEGER,
             tag_id INTEGER,
-            FOREIGN KEY (file_id) REFERENCES files(id),
-            FOREIGN KEY (tag_id) REFERENCES tags(id),
+            FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE,
+            FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE,
             PRIMARY KEY (file_id, tag_id)
         )""")
         if not query.exec():
@@ -878,14 +889,7 @@ class TagDB:
         if query.next():
             fileId = query.value(0)
         else:
-            self.addFile(filename)
-            query.prepare("SELECT id FROM files WHERE filename = ?")
-            query.addBindValue(filename)
-            if not query.exec():
-                print(f"Ошибка выполнения запроса: {query.lastError().text()}")
-                return []
-            query.next()
-            fileId = query.value(0)
+            return []
 
         query.prepare("""
         SELECT tags.tag FROM tags
@@ -961,6 +965,7 @@ class StatusBar(QtWidgets.QStatusBar):
         self.msgTimer.timeout.connect(self.clearStatusMessage)
 
     def showStatusMessage(self, text, timeout=0):
+        self.msgTimer.stop()
         self.msgLabel.setText(text)
         if timeout > 0:
             self.msgTimer.start(timeout)
