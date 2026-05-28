@@ -1,0 +1,18 @@
+{
+  "menuBar": [
+    {
+      "id": "safeDemoMenu",
+      "caption": "Safe Demo",
+      "children": [
+        {
+          "caption": "Run Safe API Demo",
+          "command": {"command": "safe_demo"}
+        },
+        {
+          "caption": "Try Blocked Harm",
+          "command": {"command": "try_harm_device"}
+        }
+      ]
+    }
+  ]
+}
